@@ -87,8 +87,28 @@ A categorized, annotated list of everything needed to build the project, mapped 
 | ⭐ x402 Facilitator API reference | https://docs.cspr.cloud/x402-facilitator-api/reference | §5.2 `/verify`, `/settle`; `casper:casper-test`, `exact` scheme. |
 | ⭐ casper-x402 examples (server + client) | https://github.com/make-software/casper-x402/tree/master/examples | Reference implementation to adapt for the premium-data endpoint. |
 | x402 user guide | https://github.com/make-software/casper-x402/blob/master/docs/user-guide.md | End-to-end flow. |
-| Facilitator endpoint | https://x402-facilitator.cspr.cloud | Settlement target. |
-| ⚠️ Sponsored x402 credits | via buildathon organizers | Free on-chain x402 usage for entrants — request early. |
+| Facilitator endpoint | https://x402-facilitator.cspr.cloud | Settlement target. Auth = the **CSPR.cloud access token** (already have it). |
+| ~~Sponsored x402 credits~~ | via buildathon organizers | **NOT needed on Testnet** — see resolution below. Optional for mainnet. |
+
+### x402 Testnet setup — RESOLVED (2026-06-20), sponsored credits not required
+
+Confirmed from the `casper-x402` repo (`.env.testnet`, `.env.template`) + on-chain entry-point check:
+
+- **Q: which CEP-18 payment token + faucet?** Use **WCSPR** — package
+  `3d80df21ba4ee4d66a2a1f60c32570dd5685e4b279f6538162a5fd1314847c1e` (= our existing `WCSPR_HASH`;
+  contract `4b351800…`). It's the asset in the official testnet example (`ASSET_NAME=Wrapped CSPR`).
+  Verified on-chain it implements the x402/EIP-3009 set: `transfer_with_authorization`,
+  `receive_with_authorization`, `authorization_state`, `cancel_authorization`. **"Faucet" = `deposit`**
+  (wrap our faucet CSPR → WCSPR). No special token funding needed.
+- **Q: must we use the facilitator's designated token, or our own?** **The resource server chooses.**
+  `ASSET_PACKAGE` is *server-side* config, advertised in `PaymentRequirements`; the facilitator settles
+  whatever CEP-18 the server names (must support `transfer_with_authorization`). We run both ends, so we
+  pick WCSPR.
+- **Who pays settlement gas?** The **facilitator account** ("pays gas for every settled payment") — the
+  hosted `x402-facilitator.cspr.cloud` provides it, gated only by the CSPR.cloud access token we already
+  have. That hosted facilitator *is* the "sponsorship"; no separate credits to request.
+- **Payer (client) needs:** a WCSPR balance + EIP-712 signing key (the agent key). Net: x402 is
+  **unblocked on Testnet today**. Phase-3 todo is just wiring `PREMIUM_ENDPOINT_URL` + the x402 client.
 
 ---
 
@@ -203,5 +223,7 @@ A categorized, annotated list of everything needed to build the project, mapped 
 ## Top blockers to resolve first
 1. **CSPR.trade router + Wise Lending staking Testnet ABIs** → decides §8.4 Mode A (atomic) vs Mode B (escrow). Ask in the Casper Developers Telegram if not in docs.
 2. **Styks Testnet readability** → decides on-chain USD conversion vs. signed-price-in fallback (§4.1.3).
-3. **CSPR.cloud access token + sponsored x402 credits** → unblocks data + payments.
+3. **CSPR.cloud access token** → unblocks data + x402 (the token also auths the hosted facilitator).
+   ✅ Have it. **Sponsored x402 credits NOT needed on Testnet** — pay with WCSPR (`deposit`-wrapped
+   faucet CSPR); hosted facilitator covers settlement gas. See §6 resolution.
 4. **Testnet liquidity for CSPR/csprUSD (or sCSPR/csprUSD)** → if thin, plan to seed a pool or size demo trades to depth.

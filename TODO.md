@@ -26,7 +26,10 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
       faucet — both 1,500 CSPR. Public keys in `.env`.
 - [x] 👤🔒 Obtain **CSPR.cloud access token** (auth required on all endpoints). In `.env`; verified (HTTP 200).
 - [x] 👤🔒 Obtain **Gemini API key** (aistudio.google.com/apikey). In `.env`; smoke-tested OK (D-004).
-- [ ] 👤 Request **sponsored x402 credits** from buildathon organizers (early — free on-chain x402 usage).
+- [x] ~~Request **sponsored x402 credits**~~ — **NOT needed on Testnet** (resolved 2026-06-20). Pay with
+      **WCSPR** (`3d80df21…`, already held; x402/EIP-3009-ready: `transfer_with_authorization` verified
+      on-chain); "faucet" = `deposit`-wrap faucet CSPR. Resource server chooses the asset; hosted
+      `x402-facilitator.cspr.cloud` covers settlement gas, auth'd by our CSPR.cloud token. See resources.md §6.
 - [~] 🔒 **ABI spike** — hashes + entry-point ABIs confirmed via query-global-state (`docs/abi-spike.md`);
       live manual tx still pending:
   - [x] CSPR.trade **router**: Mode A **proven on-chain** — CSPR→sCSPR (`bb561dfe…`) + sCSPR→WUSDT
