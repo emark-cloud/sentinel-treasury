@@ -1,0 +1,23 @@
+# Secrets
+.env
+.env.local
+keys/
+*.pem
+*secret_key*
+
+# Node
+node_modules/
+.pnpm-store/
+dist/
+.next/
+*.log
+
+# Rust / Odra
+target/
+wasm/
+**/*.rs.bk
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
