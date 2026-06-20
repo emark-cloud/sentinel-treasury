@@ -89,14 +89,23 @@ pairs WETH–sCSPR contract `30891f…236f7` (pkg `59c4…98aa1`), WrTether–WE
   callable cross-contract. De-risk = `approve(router, amount)` on the input token, then
   `swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline)` inside
   `execute_rebalance`. `amount_out_min` = the on-chain slippage floor (`min_out`). Size with
-  `get_amounts_out(amount_in, path)`. Path for sCSPR→WUSDT is multi-hop via WETH:
-  `[sCSPR, WETH, WUSDT]` (only common pool intermediary — see D-003).
+  `get_amounts_out(amount_in, path)`. **Path corrected (live MCP `get_quote`, 2026-06-20):** the
+  router's best sCSPR→WUSDT route is **`[sCSPR, WCSPR, WUSDT]`** (via the deep WUSDT/WCSPR pool),
+  not the WETH-bridged guess. Decimals sCSPR=9 / WUSDT=6; entry point + `deadline`/`min_out`
+  encoding confirmed in a built (unsigned) TransactionV1. See `docs/cspr-trade-mcp.md`.
+- **Router leg — VALIDATED ON-CHAIN** (2026-06-20) via the self-hosted MCP + agent key:
+  CSPR→sCSPR acquire (`bb561dfe…`) and sCSPR→WUSDT de-risk (approve `1719731c…` + swap `5ffc74af…`),
+  all executed OK on Testnet. Mode A (router) is live-proven; `swap_run.mjs` drives build→sign→submit.
 - **Decision (Wise Lending staking):** **Mode A (atomic), with a caveat to verify.** `stake()`,
   `unstake(scspr_amount:U256)`, `claim()` are all `Public`. **Open item:** `stake()` takes no amount
   arg and is payable — CSPR is supplied via a purse / the contract's loose-token pool
   (`__contract_main_purse`, `add_loose_tokens`/`restake_loose_tokens`). Must confirm the
   purse-handoff pattern from Odra before committing; if cross-contract purse passing is awkward,
   fall back to **Mode B** for the stake (grow) leg only. The de-risk (swap) leg stays Mode A.
+  **Status of this caveat (2026-06-20):** still OPEN — the CSPR.trade MCP is DEX-only and does not
+  cover Wise Lending staking, so it doesn't resolve the purse handoff. Need Wise integration detail
+  (or a careful session-WASM test) before any live `stake()`; risk of stuck funds otherwise. Note:
+  sCSPR for swap testing can be acquired via the direct **CSPR→sCSPR** DEX pool instead of staking.
 - **No exchange-rate getter:** the sCSPR→CSPR rate must be **COMPUTED** = `staked_cspr()` (U512) /
   `total_supply()` (U256). Label it COMPUTED in Scout provenance. Used for USD normalization (§7).
 - **Consequence:** recorded in each `Receipt`; drives Phase-2 `execute_rebalance` wiring.

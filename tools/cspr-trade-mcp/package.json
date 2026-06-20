@@ -1,0 +1,14 @@
+{
+  "name": "sentinel-cspr-trade-mcp",
+  "private": true,
+  "description": "Local self-hosted CSPR.trade MCP (Testnet) for Sentinel Treasury. See setup.sh for the casper-js-sdk ESM-interop patch.",
+  "version": "0.0.0",
+  "scripts": {
+    "postinstall": "node ./patch-casper-esm.mjs",
+    "start": "CSPR_TRADE_NETWORK=testnet CSPR_TRADE_TRANSPORT=http CSPR_TRADE_HOST=127.0.0.1 CSPR_TRADE_PORT=3001 cspr-trade-mcp"
+  },
+  "dependencies": {
+    "@make-software/cspr-trade-mcp": "0.6.0",
+    "casper-js-sdk": "5.0.12"
+  }
+}

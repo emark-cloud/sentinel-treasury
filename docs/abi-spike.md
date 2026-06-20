@@ -31,12 +31,18 @@ add_liquidity / add_liquidity_cspr / remove_liquidity / remove_liquidity_cspr
 quote / get_amount_in / get_amount_out / factory_address() / wcspr()
 ```
 - **De-risk (sCSPR→stable):** `approve(router, amount_in)` on sCSPR, then
-  `swap_exact_tokens_for_tokens(amount_in, amount_out_min, [sCSPR, WETH, WUSDT], vault, deadline)`.
+  `swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, vault, deadline)`.
 - `amount_out_min` = on-chain slippage floor (`min_out`, spec §11). `path` is `List<Key>` of token
-  contract hashes. `to` = vault. `deadline` = U64 (ms/era — verify in manual test).
-- **Path note:** no direct sCSPR↔WUSDT depth; only common pool intermediary is **WETH**
-  (sCSPR↔WETH `59c4…`, WUSDT↔WETH `bb75…`). WUSDT↔WCSPR `544f23c9…` is the deepest WUSDT pool, so
-  `[sCSPR, WETH, WUSDT]` or a WCSPR-bridged path; let `get_amounts_out` pick the better quote.
+  contract hashes. `to` = vault. `deadline` = U64.
+- **Path — CONFIRMED via live MCP `get_quote` (2026-06-20):** the router's best route is
+  **`[sCSPR, WCSPR, WUSDT]`** (the WUSDT/WCSPR pool `544f23c9…` is the deepest), **not** the
+  WETH-bridged path the static scan guessed. 500 sCSPR → 2.22129 WUSDT, price impact 0.61%,
+  recommended slippage 62 bps. Decimals: sCSPR=9, WUSDT=6. Let the router / MCP pick the path.
+- **`deadline` unit — RESOLVED:** the MCP takes `deadline_minutes` (default 20) and emits the
+  absolute U64; `slippage_bps` (default 300) → `amount_out_min`. Entry point confirmed as
+  `swap_exact_tokens_for_tokens` in the built (unsigned) `TransactionV1`. See `docs/cspr-trade-mcp.md`.
+- **Acquire sCSPR for testing without Wise stake:** a direct **CSPR→sCSPR** pool exists (100 CSPR →
+  101.349 sCSPR, 0.30% impact) — lets the swap leg be exercised on-chain independent of `stake()`.
 
 ## sCSPR / Wise Lending staking — Mode A (caveat: stake purse)
 
@@ -74,6 +80,18 @@ mint(owner:Key, amount:U256);  burn(owner:Key, amount:U256)   # mint present (en
 
 ## Remaining manual checks (live tx) before locking D-001
 
-1. Manual **swap** sCSPR→WUSDT via the router (approve + `swap_exact_tokens_for_tokens`); confirm path + `deadline` unit.
-2. Manual **stake** (resolve the `stake()` purse handoff); confirm sCSPR minted + read exchange-rate inputs.
-3. Read a live `get_twap_price("CSPRUSD")` value to fix the U64 scale.
+1. ✅ **Swap leg fully validated ON-CHAIN** (2026-06-20, agent key, real Testnet deploys via
+   build→sign→submit through the self-hosted MCP):
+   - Acquire **CSPR→sCSPR** 100 CSPR → 101.348892663 sCSPR — tx
+     `bb561dfeea55805d260fa4416be4bce0fcf994c6c4861f3e8d0c62898bb9de2b` (gas 10.48 CSPR, OK).
+   - De-risk **sCSPR→WUSDT** 100 sCSPR → 0.444509 WUSDT (route sCSPR→WCSPR→WUSDT): approve tx
+     `1719731cd194debc3f978558b5bb4771b9a56720b1afe809fea617040a397b71` (gas 0.39) then swap tx
+     `5ffc74afc816c552a0d308fc437b7bb62c74d170d154c3237b150c7f2657144d` (gas 11.93), both OK.
+   - Confirms: package-hash targeting, `approve`+`swap_exact_tokens_for_tokens`, `deadline_minutes`→
+     U64 deadline, `slippage_bps`→`min_out`, sCSPR(9)/WUSDT(6) decimals. Mode A (router) is live-proven.
+2. ⏳ Manual **stake** (resolve the `stake()` purse handoff) — **NOT covered by the CSPR.trade MCP**
+   (DEX-only). Still needs a Wise Lending session-WASM purse handoff or Mode-B fallback for the grow
+   leg. Risk of stuck funds if done blindly — get Wise integration detail before a live stake.
+3. ⏳ Read a live `get_twap_price("CSPRUSD")` value to fix the U64 scale. Not cleanly readable
+   off-chain (Odra dictionary; entry-point return needs contract execution). Cleanest path: read it
+   contract-to-contract from our Phase-2 vault, or via a tiny throwaway reader session.

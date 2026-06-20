@@ -10,11 +10,17 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 
 ## Phase 0 — Prerequisites & spikes (unblocks everything)
 
-> **Immediate next (post-ABI-spike), in order:**
-> 1. **Live manual tx checks** — small sCSPR→WUSDT swap (approve + `swap_exact_tokens_for_tokens`)
->    + a `stake()` to close the Mode-A purse caveat (D-001), and read a live `get_twap_price("CSPRUSD")`
->    to fix the U64 scale (D-002). Spends real Testnet funds; use the agent key. See `docs/abi-spike.md`.
-> 2. **Stand up CSPR.trade MCP** self-hosted vs Testnet (keys local) — needed for slippage sizing (D-003).
+> **Phase-0 status (2026-06-20):**
+> 1. ✅ **Live swap proven on-chain** — CSPR→sCSPR acquire + sCSPR→WUSDT de-risk (route
+>    `[sCSPR,WCSPR,WUSDT]`) executed with the agent key via build→sign→submit (`tools/cspr-trade-mcp/
+>    swap-run.mjs`). Mode A (router) live. Hashes in `docs/abi-spike.md`.
+> 2. ✅ **CSPR.trade MCP stood up** self-hosted vs Testnet (`tools/cspr-trade-mcp/`, ESM patch); swap
+>    construction validated. Keys stay local; HTTP for orchestrator, stdio validated here.
+>
+> **Deferred to Phase 2 (decided 2026-06-20):**
+> - Wise `stake()` purse handoff — NOT covered by the DEX MCP; resolve via the vault's cross-contract
+>   call test (fund-loss risk if probed blindly off-chain).
+> - Live `get_twap_price("CSPRUSD")` U64 scale — read contract-to-contract from the deployed vault.
 
 - [x] 👤🔒 Create Casper Testnet accounts: **owner** + **agent** keypairs (casper-client key-gen). Funded via
       faucet — both 1,500 CSPR. Public keys in `.env`.
@@ -23,13 +29,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 - [ ] 👤 Request **sponsored x402 credits** from buildathon organizers (early — free on-chain x402 usage).
 - [~] 🔒 **ABI spike** — hashes + entry-point ABIs confirmed via query-global-state (`docs/abi-spike.md`);
       live manual tx still pending:
-  - [~] CSPR.trade **router**: swap+approve ABI confirmed (Mode A); manual swap pending.
-  - [~] Wise Lending **staking**: stake/unstake ABI confirmed; exchange-rate = `staked_cspr()/total_supply()` (no getter); manual stake + `stake()` purse semantics pending.
+  - [x] CSPR.trade **router**: Mode A **proven on-chain** — CSPR→sCSPR (`bb561dfe…`) + sCSPR→WUSDT
+        (approve `1719731c…`, swap `5ffc74af…`), route `[sCSPR,WCSPR,WUSDT]`, deadline/min_out/decimals confirmed.
+  - [~] Wise Lending **staking**: stake/unstake ABI confirmed; exchange-rate = `staked_cspr()/total_supply()` (no getter); manual stake + `stake()` purse semantics pending (not covered by DEX MCP).
   - [x] **stable** CEP-18: csprUSD N/A on Testnet → **WUSDT** confirmed (transfer/transfer_from/approve). See D-005.
   - [x] **Styks** `get_twap_price("CSPRUSD") -> Option<U64>` confirmed `Public`/readable → on-chain read (D-002); confirm U64 scale in live read.
 - [x] 🔒 **Decide & record:** **Mode A** for router + staking (staking purse caveat), **on-chain Styks read**.
       Recorded in `docs/decisions.md` (D-001/D-002) + `CLAUDE.md` registry.
-- [ ] Stand up **CSPR.trade MCP** self-hosted against Testnet (keys stay local); validate swap-construction path.
+- [x] Stand up **CSPR.trade MCP** self-hosted against Testnet (keys stay local); swap-construction path
+      validated (`tools/cspr-trade-mcp/`, `docs/cspr-trade-mcp.md`). Needs ESM-interop patch (postinstall).
 - [x] Check Testnet **liquidity**: thin everywhere; **rely on Router multi-hop routing + MCP sizing**, no pool seeding (D-003).
 
 ---
