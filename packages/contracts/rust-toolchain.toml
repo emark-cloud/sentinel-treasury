@@ -1,6 +1,8 @@
 # Odra 2.8's proc-macros use `#![feature(box_patterns)]`, which requires a nightly toolchain.
-# `cargo +nightly test` runs the guardrail suite on the MockVM; `cargo odra build` targets WASM.
+# Pinned to the nightly Odra 2.8 ships against (`cargo odra new` emits the same pin): later
+# nightlies' rust-lld rejects the Casper host imports (`casper_revert`, …) as undefined symbols
+# at wasm link time. `cargo test` runs the MockVM suite; `cargo odra build` targets WASM.
 [toolchain]
-channel = "nightly"
+channel = "nightly-2026-01-01"
 components = ["rustfmt", "clippy"]
 targets = ["wasm32-unknown-unknown"]

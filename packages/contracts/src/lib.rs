@@ -12,8 +12,14 @@
 //!
 //! Phase 2 lands the storage, entry points, and the `execute_rebalance` guardrail flow.
 
+// The contract is `no_std` for the WASM target (tests build natively with `std`). Without it the
+// wasm32 build links `std`'s `panic_impl`, which collides with `odra_casper_wasm_env`'s handler.
+#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(test), no_main)]
 // The Odra `#[odra::module]` macro emits `#[cfg(odra_module)]` gates the compiler can't see.
 #![allow(unexpected_cfgs)]
+
+extern crate alloc;
 
 pub mod audit_log;
 pub mod external;

@@ -146,9 +146,9 @@ pnpm --filter dashboard dev
 Values to obtain (none are public URLs; source via protocol Testnet UIs, cspr.live, docs/Discords, mentors):
 
 ```
-# Our deployed contracts (after deploy)
-VAULT_CONTRACT_HASH=
-AUDITLOG_CONTRACT_HASH=
+# Our deployed contracts (Phase-2 deploy, casper-test, 2026-06-21 — package hashes)
+VAULT_CONTRACT_HASH=b44ac9cc720e30f0568c74612e984fc27b262dc7ea4ca4b0e1fa664ff3068f95     # deploy tx 010e3168…; init owner/agent + conservative demo policy
+AUDITLOG_CONTRACT_HASH=3f0d61e2e1895f7810e59ffa168749058ac981bd5fa18a887a2eecdbc3d982db  # deploy tx 034015f3…; set_vault tx c3407329… binds vault as writer
 
 # Keys
 OWNER_PUBLIC_KEY=            # weight 3, key-management

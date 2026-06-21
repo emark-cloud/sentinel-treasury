@@ -31,9 +31,24 @@ Contracts written; **13 MockVM tests green** (`cargo +nightly test`). Coverage:
 - **AuditLog:** append-only / contiguous `range`·`latest`·`count`·`get`; unauthorized `record` revert.
 - **Happy paths:** stake (records a receipt; notional/twap/alloc asserted) and de-risk swap.
 
-Not yet `cargo odra build`-verified to WASM, and not deployed — both need `cargo-odra`
-installed and (deploy) funded Testnet keys. See `docs/decisions.md` D-006/D-007/D-008 for the
-ABI-width, receipt `deploy_hash`, and init-cycle decisions taken here.
+**Deployed to casper-test** (2026-06-21): AuditLog `3f0d61e2…982db`, Vault `b44ac9cc…068f95` (both
+package hashes verified on-chain; `set_vault` wired). The agent account is hardened per §4.3 (owner
+w3 / agent w1, `deployment=1` / `key_management=3`). `cargo odra build` produces distinct optimized
+`wasm/AuditLog.wasm` (~273 KB) / `wasm/SentinelVault.wasm` (~341 KB). See `docs/decisions.md`
+D-006/D-007/D-008 (ABI width / receipt `deploy_hash` / init-cycle), **D-009** (build toolchain —
+pinned `nightly-2026-01-01`, `no_std` scaffold, `build.rs`, `wasm-opt`/`wasm-strip`), and **D-010**
+(deploy + hardening: `bin/livenet_deploy.rs`, public node, `tools/key-hardening/`).
+
+### Build prerequisites
+
+```
+rustup toolchain install nightly-2026-01-01 --target wasm32-unknown-unknown   # pinned (rust-toolchain.toml)
+cargo install cargo-odra --version 0.1.7
+# wasm-opt (binaryen) + wasm-strip (wabt) must be on PATH for the optimize step:
+export PATH="$HOME/.local/bin:$PATH"   # wherever you put the two binaries; not permanent across shells
+```
+
+Full prerequisites + the exact deploy/hardening commands: **`docs/deploy-runbook.md`**.
 
 ## Commands
 
@@ -43,9 +58,11 @@ cargo odra build      # compile WASM for Testnet (needs cargo-odra)
 cargo odra test       # WASM-backend tests
 ```
 
-Deploy order: **AuditLog → Vault → `audit_log.set_vault(vault)`** (admin-only). Deploy to
-Testnet via the Odra Casper/Livenet backend; record the resulting contract hashes in the
-`CLAUDE.md` config registry (`VAULT_CONTRACT_HASH`, `AUDITLOG_CONTRACT_HASH`).
+Deploy order: **AuditLog → Vault → `audit_log.set_vault(vault)`** (admin-only), via
+`bin/livenet_deploy.rs` (Odra Livenet env, `--features livenet`) against the public Testnet node;
+then harden the agent account with `tools/key-hardening/`. **Full steps + prerequisites (toolchain,
+`wasm-opt`/`wasm-strip` on `PATH`, Livenet env vars, funded keys): `docs/deploy-runbook.md`.** Record
+the resulting hashes in the `CLAUDE.md` registry (`VAULT_CONTRACT_HASH`, `AUDITLOG_CONTRACT_HASH`).
 
 ## Keep in sync
 

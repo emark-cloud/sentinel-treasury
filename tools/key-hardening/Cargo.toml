@@ -1,0 +1,22 @@
+[package]
+name = "key-hardening"
+version = "0.1.0"
+edition = "2021"
+description = "One-shot session code: harden the Sentinel agent account's associated keys (spec §4.3)"
+
+[dependencies]
+# Disable `no-std-helpers`: casper-contract 5.1.1's bundled panic handler uses an outdated
+# `#[no_mangle]` form that current nightlies reject (same reason Odra supplies its own). We
+# provide the panic handler + global allocator in `main.rs` instead.
+casper-contract = { version = "5.1.1", default-features = false }
+casper-types = "6.1.0"
+wee_alloc = "0.4.5"
+
+[[bin]]
+name = "key_hardening"
+path = "src/main.rs"
+test = false
+
+[profile.release]
+codegen-units = 1
+lto = true

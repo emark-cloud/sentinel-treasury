@@ -69,12 +69,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 
 ## Phase 2 — Contracts (the foundation) · Rust + Odra 2.8.x, upgradable
 
-> **Phase-2 status (2026-06-21):** contracts written + **13 MockVM tests green** (`cargo +nightly test`,
-> all 6 guardrail invariants + AuditLog append-only + stake/swap happy paths). Odra 2.8 needs **nightly**
-> (`box_patterns`) — pinned in `packages/contracts/rust-toolchain.toml`. Decisions D-006 (`u16`→`u32` for
-> the bps ABI), D-007 (on-chain receipt `deploy_hash = 0`, reconciled off-chain), D-008 (AuditLog
-> `admin`+`set_vault` to break the vault↔log init cycle) recorded in `docs/decisions.md`. **Remaining:
-> the two 👤 deploy/hardening items** (need `cargo odra` + funded keys on Testnet).
+> **Phase-2 status (2026-06-21):** contracts written + **13 MockVM tests green** + **WASM build
+> verified** (`cargo odra build` exits 0 → distinct `wasm/AuditLog.wasm` ~273 KB / `SentinelVault.wasm`
+> ~341 KB). Odra 2.8 needs nightly (`box_patterns`); now pinned to **`nightly-2026-01-01`** in
+> `rust-toolchain.toml` (later nightlies' rust-lld rejects Casper host imports). Build toolchain fixes
+> (D-009): `no_std` lib scaffold, 2.8 build bins, **added missing `build.rs`** (without it both contracts
+> built byte-identical wasm), `wasm-opt`/`wasm-strip` on PATH. Decisions D-006 (`u16`→`u32` bps ABI),
+> D-007 (on-chain receipt `deploy_hash = 0`), D-008 (AuditLog `admin`+`set_vault` init-cycle), D-009
+> (build toolchain) in `docs/decisions.md`. **Phase 2 COMPLETE (2026-06-21):** both contracts deployed to
+> casper-test + agent account hardened (§4.3) + all verified on-chain — see D-010 and the checked items below.
 
 - [x] **AuditLog** contract (`src/audit_log.rs`) — build + unit-tested first:
   - [x] `Receipt` storage (§4.2.1); append-only; entry points `record` / `get` / `range` / `latest` / `count`.
@@ -92,9 +95,13 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 - [x] Wire swap/stake per **Phase-0 mode decision** — **Mode A** cross-contract calls (`src/external.rs`: Router/Staking/Cep18/Styks refs).
 - [x] **Guardrail unit tests** (`src/tests.rs`, one per invariant): cap breach reverts, non-whitelisted target reverts,
       slippage revert (`amount_out < min_out`), out-of-bounds allocation reverts, paused blocks action, role gate. (Mocks in `src/mocks.rs`.)
-- [ ] 👤🔒 **Deploy** both contracts to Testnet (Odra Casper/Livenet backend); record hashes in `CLAUDE.md` registry.
-- [ ] 👤 **Associated-keys hardening** (§4.3): agent key weight 1, owner weight 3; `deployment_threshold = 1`,
-      `key_management_threshold = 3`. Verify agent can transact but cannot rekey/escalate.
+- [x] 👤🔒 **Deploy** both contracts to Testnet (Odra Livenet env, `bin/livenet_deploy.rs`, public node
+      `node.testnet.casper.network`). AuditLog `3f0d61e2…982db` (tx `034015f3…`), Vault `b44ac9cc…068f95`
+      (tx `010e3168…`), `set_vault` tx `c3407329…`. Both packages verified on-chain (1 version each);
+      hashes recorded in `.env` + `CLAUDE.md`. Vault init'd with conservative demo policy.
+- [x] 👤 **Associated-keys hardening** (§4.3): hardened the **agent account** via one-shot session code
+      (`tools/key-hardening/`, tx `877ed73f…`). Verified on-chain: owner key weight 3, agent key weight 1,
+      `deployment_threshold = 1`, `key_management_threshold = 3` → agent transacts but cannot rekey/escalate.
 
 ---
 

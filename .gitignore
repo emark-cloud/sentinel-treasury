@@ -15,6 +15,7 @@ dist/
 # Rust / Odra
 target/
 wasm/
+*.wasm
 **/*.rs.bk
 
 # OS / editor

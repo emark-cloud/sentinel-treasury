@@ -178,3 +178,48 @@ pairs WETH–sCSPR contract `30891f…236f7` (pkg `59c4…98aa1`), WrTether–WE
 - **Decision:** `AuditLog::init(admin, agent)` takes the owner as `admin`; deploy order is
   **AuditLog → Vault → `audit_log.set_vault(vault)`** (admin-only, one-time). The agent is an
   authorized writer from `init` so direct agent records also work. Reflected in the deploy runbook.
+
+## D-009 — WASM build toolchain: pinned nightly + missing scaffold — DECIDED (2026-06-21, Phase 2)
+
+- **Context:** the Phase-1 Odra skeleton compiled + passed the 13 MockVM tests but had **never been
+  `cargo odra build`-verified to WASM**. The first real WASM build surfaced four scaffold gaps the
+  MockVM (native) path hid, none of which are contract-logic bugs:
+  1. **No `no_std`.** `src/lib.rs` linked `std` into the wasm, colliding with
+     `odra_casper_wasm_env`'s `panic_impl` (`duplicate lang item`). Fix: `#![cfg_attr(not(test),
+     no_std)] / no_main` + `extern crate alloc;` (tests still build natively with `std`).
+  2. **Wrong build bins.** `bin/build_{contract,schema}.rs` called `odra_build::build_*()` (an
+     Odra-1.x spelling). Replaced with the 2.8 form (`#![no_std]` + `extern "Rust"` schema hooks);
+     bins renamed to the `sentinel_contracts_build_*` convention cargo-odra resolves.
+  3. **Missing `build.rs`.** Odra selects which contract a wasm exposes via the `odra_module` cfg,
+     set by a crate-root `build.rs` (`odra_build::build()`) reading `ODRA_MODULE`. Without it **both
+     contracts built byte-identical** wasm. Adding it makes cargo-odra compile once per contract →
+     distinct `AuditLog.wasm` (~273 KB) / `SentinelVault.wasm` (~341 KB, opt+strip).
+  4. **Unpinned nightly.** `rust-toolchain.toml` used bare `nightly`; current nightlies' `rust-lld`
+     rejects the Casper host imports (`casper_revert`, …) as undefined symbols at wasm link time.
+- **Decision:** pin **`nightly-2026-01-01`** (the nightly `cargo odra new` emits for Odra 2.8) and
+  carry the scaffold above. Build deps: `cargo-odra 0.1.7`, `wasm-opt` (binaryen 130), `wasm-strip`
+  (wabt 1.0.41) on `PATH`. `cargo odra build` now exits 0; the 13 MockVM tests still pass on the pin.
+- **Consequence:** contracts are WASM-deploy-ready. The remaining Phase-2 items (Testnet deploy +
+  associated-keys hardening) are unblocked but still require funded keys + signing on the host.
+
+## D-010 — Phase-2 Testnet deploy + agent-account hardening — DONE (2026-06-21)
+
+- **Deploy mechanism:** Odra Livenet host env via `packages/contracts/bin/livenet_deploy.rs` (feature
+  `livenet`, dep `odra-casper-livenet-env`). Account 0 = owner key, account 1 = agent key.
+  - **Node:** public Testnet RPC `https://node.testnet.casper.network/rpc` + open SSE
+    `…/events` — **not** CSPR.cloud (the Livenet event watcher issues an unauthenticated GET, so the
+    token-gated cspr.cloud stream 401s; the public node needs no auth). Chain `casper-test`.
+  - **Order (D-008):** AuditLog → Vault → `set_vault`. Package hashes (in `.env` / `CLAUDE.md`):
+    AuditLog `3f0d61e2…982db` (tx `034015f3…`), Vault `b44ac9cc…068f95` (tx `010e3168…`),
+    `set_vault` tx `c3407329…`. Both packages verified on-chain (1 version each).
+  - **Vault policy at init (owner-chosen, conservative demo):** per-action $50, daily $200 (micro-USD
+    caps), sCSPR band 15–70 %, slippage 1 %. Tunable later via `set_policy`.
+- **Associated-keys hardening (§4.3):** done as **one-shot session code** (`tools/key-hardening/`,
+  casper-contract 5.1.1, `default-features=false` + own `wee_alloc`/panic handler; submitted with
+  `casper-client put-transaction session … --transaction-runtime vm-casper-v1`, tx `877ed73f…`). A
+  single atomic session — add owner key (w3) → set `key_management=3` → set `deployment=1` — so a revert
+  leaves the account unchanged (no lock-out window); the owner account hash is embedded and was verified
+  against `OWNER_PUBLIC_KEY`. **On-chain result:** owner key w3 + agent key w1, `deployment=1`,
+  `key_management=3`. The agent signs `execute_rebalance` but cannot rekey/escalate; owner keeps recovery.
+- **Note:** the agent account is still a Condor *legacy* account; the v1 key-management host functions
+  apply cleanly to it.

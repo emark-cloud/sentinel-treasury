@@ -5,22 +5,35 @@ edition = "2021"
 description = "Sentinel Treasury on-chain layer: SentinelVault + AuditLog (Odra, upgradable)"
 
 [dependencies]
-odra = { version = "2.8.0", default-features = false }
+odra = { version = "2.8.0", features = [], default-features = false }
 
 [dev-dependencies]
-odra-test = "2.8.0"
+odra-test = { version = "2.8.0", features = [], default-features = false }
 
 [build-dependencies]
-odra-build = "2.8.0"
+odra-build = { version = "2.8.0", features = [], default-features = false }
 
+# Host-side (non-wasm) build/deploy helpers. `odra-casper-livenet-env` powers the Testnet deploy
+# bin and is optional — only pulled in under the `livenet` feature.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+odra-build = { version = "2.8.0", features = [], default-features = false }
+odra-casper-livenet-env = { version = "2.8.0", optional = true }
+
+# cargo-odra resolves the build bins by the `<crate>_build_{contract,schema}` naming convention.
 [[bin]]
-name = "build_contract"
+name = "sentinel_contracts_build_contract"
 path = "bin/build_contract.rs"
 test = false
 
 [[bin]]
-name = "build_schema"
+name = "sentinel_contracts_build_schema"
 path = "bin/build_schema.rs"
+test = false
+
+[[bin]]
+name = "livenet_deploy"
+path = "bin/livenet_deploy.rs"
+required-features = ["livenet"]
 test = false
 
 [lib]
@@ -28,7 +41,12 @@ doctest = false
 
 [features]
 default = []
+# Pulls in the Casper Livenet host env for the Testnet deploy bin (`bin/livenet_deploy.rs`).
+livenet = ["dep:odra-casper-livenet-env"]
 
 [profile.release]
 codegen-units = 1
 lto = true
+
+[profile.dev.package."*"]
+opt-level = 3
