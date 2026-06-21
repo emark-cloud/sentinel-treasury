@@ -1,0 +1,35 @@
+[package]
+name = "sentinel-contracts"
+version = "0.1.0"
+edition = "2021"
+description = "Sentinel Treasury on-chain layer: SentinelVault + AuditLog (Odra, upgradable)"
+
+[dependencies]
+odra = { version = "2.8.0", default-features = false }
+
+[dev-dependencies]
+odra-test = "2.8.0"
+
+[build-dependencies]
+odra-build = "2.8.0"
+
+[[bin]]
+name = "build_contract"
+path = "bin/build_contract.rs"
+test = false
+
+[[bin]]
+name = "build_schema"
+path = "bin/build_schema.rs"
+test = false
+
+[lib]
+doctest = false
+test = false
+
+[features]
+default = []
+
+[profile.release]
+codegen-units = 1
+lto = true

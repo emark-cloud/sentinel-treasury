@@ -1,0 +1,14 @@
+node_modules
+dist
+.next
+coverage
+packages/contracts/target
+packages/contracts/wasm
+pnpm-lock.yaml
+package-lock.json
+
+# Authoritative spec/docs and Phase-0 tooling — managed by hand, not Prettier.
+*.md
+docs
+tools
+keys

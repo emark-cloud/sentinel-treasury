@@ -1,0 +1,29 @@
+{
+  "name": "@sentinel/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The proof contract: TS types + JSON schemas + canonical-JSON blake2b hashing, mirrored on-chain",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "blakejs": "^1.2.1",
+    "canonicalize": "^2.0.0"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@sentinel/orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Scout/Risk/Treasury agents, data service, x402 client, execution service, rule engine (Phases 3–5)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "dev": "node --experimental-strip-types src/index.ts"
+  },
+  "dependencies": {
+    "@sentinel/shared": "workspace:*"
+  }
+}

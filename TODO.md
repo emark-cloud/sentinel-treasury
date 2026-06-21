@@ -45,15 +45,25 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 
 ---
 
-## Phase 1 — Monorepo scaffold
+## Phase 1 — Monorepo scaffold ✅ (2026-06-21)
 
-- [ ] Initialize **pnpm workspace**: `pnpm-workspace.yaml`, root `package.json`, root `tsconfig` + lint/format.
-- [ ] Create packages: `packages/shared`, `packages/orchestrator`, `apps/dashboard`; Rust crate `packages/contracts`.
-- [ ] 🔒 **`packages/shared`** — the proof contract:
-  - [ ] TS interfaces: `MarketSnapshot` (§5.3), `RiskVerdict` / `AllocationProposal` / `RebalanceAction` / `Decision` (§6.3).
-  - [ ] Rust-mirroring enums/structs reference: `ActionKind`, `Regime`, `ActionResult`, `AllocationBps`, `Receipt`.
-  - [ ] JSON schemas for every agent I/O (for parse-validate-retry).
-  - [ ] **Canonical-JSON + blake2b-256 hashing util** (`canonicalize` + `blakejs`) with reproducibility tests.
+- [x] Initialize **pnpm workspace**: `pnpm-workspace.yaml`, root `package.json`, root `tsconfig`
+      (`tsconfig.base.json` + project refs) + lint/format (ESLint 9 flat config, Prettier).
+- [x] Create packages: `packages/shared`, `packages/orchestrator`, `apps/dashboard` (Phase-6 placeholder);
+      Rust crate `packages/contracts` (Odra skeleton — modules filled in Phase 2, not yet `cargo odra build`-verified).
+- [x] 🔒 **`packages/shared`** — the proof contract (builds + 18 tests green):
+  - [x] TS interfaces: `MarketSnapshot` (§5.3) in `src/types/market.ts`; `RiskVerdict` / `AllocationProposal` /
+        `RebalanceAction` / `Decision` / `DeliberationTurn` (§6.3) in `src/types/decision.ts`.
+  - [x] Rust-mirroring enums/structs reference: `ActionKind`, `Regime`, `ActionResult`, `AllocationBps`, `Receipt`,
+        `PolicyConfig`, `VaultBalances` in `src/types/onchain.ts` + canonical Rust listing in `onchain-reference.md`.
+  - [x] JSON schemas for every agent I/O (`src/schemas/index.ts`) + Ajv `validate()` helper for parse-validate-retry.
+  - [x] **Canonical-JSON + blake2b-256 hashing util** (`canonicalize` + `blakejs`) in `src/hash/canonical.ts`,
+        with reproducibility tests (order-independence + BLAKE2b-256 `"abc"` known vector) in `test/hash.test.ts`.
+
+> **Phase-1 notes:** `pnpm build` / `pnpm typecheck` / `pnpm test` all pass. TS is ESM + NodeNext; `ajv`
+> and `canonicalize` ship CJS with ESM-style `.d.ts`, so their default imports are cast to match Node's
+> runtime interop (see comments in `canonical.ts` / `schemas/index.ts`). Prettier governs code only —
+> the spec/docs markdown and `tools/` are in `.prettierignore`.
 
 ---
 

@@ -1,0 +1,14 @@
+{
+  "name": "@sentinel/dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dark command-center dashboard (Next.js) — scaffolded in Phase 6, see design.md",
+  "type": "module",
+  "scripts": {
+    "build": "echo \"dashboard: Next.js app scaffolded in Phase 6 (see TODO.md)\"",
+    "test": "echo \"dashboard: no tests yet (Phase 6)\""
+  },
+  "dependencies": {
+    "@sentinel/shared": "workspace:*"
+  }
+}
