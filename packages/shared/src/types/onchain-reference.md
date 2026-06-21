@@ -4,6 +4,10 @@ This is the **canonical reference** for the on-chain structs/enums that `onchain
 mirrors. The real definitions live in `packages/contracts` (Phase 2); this file keeps
 the off-chain mirror honest until then. From spec §4.2.1 & §12.1.
 
+> **bps width:** the spec writes `u16` for basis-point fields, but Casper's CL type system has no
+> 16-bit integer (`u16` cannot cross the contract ABI), so the contracts use **`u32`**. Values
+> still live in `[0, 10000]`. The TS mirror keeps `number`, so nothing changes off-chain.
+
 ```rust
 enum ActionKind { Stake, Unstake, SwapToStable, SwapToRisk, NoOp }
 enum Regime { Calm, Elevated, Stressed }
@@ -12,12 +16,12 @@ enum ActionResult { Success, Reverted, Skipped }
 struct PolicyConfig {
     per_action_cap_usd: U256,
     daily_cap_usd: U256,
-    max_slippage_bps: u16,
-    min_scspr_bps: u16,
-    max_scspr_bps: u16,
+    max_slippage_bps: u32,
+    min_scspr_bps: u32,
+    max_scspr_bps: u32,
 }
 
-struct AllocationBps { scspr: u16, csprusd: u16, cspr: u16 } // sums to 10000
+struct AllocationBps { scspr: u32, csprusd: u32, cspr: u32 } // sums to 10000
 struct VaultBalances { cspr: U512, scspr: U256, csprusd: U256 }
 
 struct Receipt {

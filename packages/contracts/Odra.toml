@@ -1,8 +1,8 @@
-# Odra contract registry. Contracts are added in Phase 2 (TODO.md) — once SentinelVault
-# and AuditLog modules exist, register them here, e.g.:
-#
-# [[contracts]]
-# fqn = "sentinel_contracts::audit_log::AuditLog"
-#
-# [[contracts]]
-# fqn = "sentinel_contracts::vault::SentinelVault"
+# Odra contract registry. Build order: AuditLog first (the vault's init takes its address),
+# then SentinelVault. Both are upgradable Casper contract packages.
+
+[[contracts]]
+fqn = "sentinel_contracts::audit_log::AuditLog"
+
+[[contracts]]
+fqn = "sentinel_contracts::vault::SentinelVault"

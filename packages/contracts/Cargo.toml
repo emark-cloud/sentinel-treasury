@@ -25,7 +25,6 @@ test = false
 
 [lib]
 doctest = false
-test = false
 
 [features]
 default = []

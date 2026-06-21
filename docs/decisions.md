@@ -146,3 +146,35 @@ pairs WETH–sCSPR contract `30891f…236f7` (pkg `59c4…98aa1`), WrTether–WE
   second time (spec §11). Revisit (seed a pool) only if demo trades can't clear acceptable slippage.
 - **Consequence:** no pool-seeding work in Phase 0; slippage sizing is MCP-driven; the execution
   layer must pass the Router a path (or let the Router compute it) rather than hitting one pair.
+
+---
+
+## D-006 — Basis-point ABI width: `u16` → `u32` — DECIDED (2026-06-21, Phase 2)
+
+- **Context:** spec §12.1 writes the bps fields (`max_slippage_bps`, `min/max_scspr_bps`,
+  `AllocationBps`) as `u16`. Casper's CL type system has **no 16-bit integer** — `u16` does not
+  implement `CLTyped`/`ToBytes`, so it cannot cross the contract ABI (compile error:
+  `the trait bound u16: NamedCLTyped is not satisfied`).
+- **Decision:** the contracts use **`u32`** for all bps fields. Values still live in `[0, 10000]`.
+  The off-chain TS mirror keeps `number`, so nothing changes off-chain. Reference doc
+  (`packages/shared/src/types/onchain-reference.md`) updated with the note.
+
+## D-007 — On-chain receipt `deploy_hash` = 0, reconciled off-chain — DECIDED (2026-06-21, Phase 2)
+
+- **Context:** `Receipt.deploy_hash` (§4.2.1) is the executed `TransactionV1` hash. The vault writes
+  the receipt cross-contract **inside** that same transaction (TODO "for atomicity"), but a contract
+  cannot read its own enclosing transaction hash on Casper 2.x at execution time.
+- **Decision:** the vault records the receipt with `deploy_hash = [0u8; 32]`; the cryptographic core
+  of the proof (`perception_hash` / `decision_hash`, computed off-chain over canonical JSON) is
+  written verbatim and is what makes the log verifiable (spec §9.2). The **Phase-5 proof layer**
+  reconciles the real `deploy_hash` via the emitted `RebalanceExecuted` event (cycle nonce → tx).
+- **Consequence:** atomicity is preserved for the hashes that matter; `deploy_hash` is a
+  post-finality annotation, not an on-chain-at-exec value.
+
+## D-008 — AuditLog `admin` + `set_vault` to break the init cycle — DECIDED (2026-06-21, Phase 2)
+
+- **Context:** the AuditLog gates `record` to the vault (cross-contract caller), but the vault's
+  `init` needs the AuditLog address — a circular deploy-time dependency.
+- **Decision:** `AuditLog::init(admin, agent)` takes the owner as `admin`; deploy order is
+  **AuditLog → Vault → `audit_log.set_vault(vault)`** (admin-only, one-time). The agent is an
+  authorized writer from `init` so direct agent records also work. Reflected in the deploy runbook.

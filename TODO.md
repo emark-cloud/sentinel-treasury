@@ -69,21 +69,29 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 
 ## Phase 2 — Contracts (the foundation) · Rust + Odra 2.8.x, upgradable
 
-- [ ] **AuditLog** contract (build + unit-test first — it's the simplest):
-  - [ ] `Receipt` storage (§4.2.1); append-only; entry points `record` / `get` / `range` / `latest` / `count`.
-  - [ ] Caller gate: only vault/agent may `record`. No update/delete entry points (tamper-evident).
-- [ ] **SentinelVault** — storage + owner surface:
-  - [ ] Storage (§4.1.1): owner/agent/paused, policy caps, `day_spent_usd`/`day_epoch`, whitelist, alloc bounds, audit_log, nonce.
-  - [ ] Owner entry points: `init`, `deposit_cspr`, `deposit_token`, `withdraw`, `set_policy`, `set_agent`, `set_whitelist`, `pause`.
-  - [ ] Views: `balances`, `policy`, `day_remaining_usd`.
-- [ ] 🔒 **`execute_rebalance`** enforcement flow (§4.1.3 — the heart of bounded autonomy):
-  - [ ] role gate (caller == agent), `!paused`, whitelist check, day-epoch roll.
-  - [ ] `notional_usd` via on-chain Styks read (or verified signed-price-in); per-action cap + daily cap checks.
-  - [ ] allocation-bounds check (`min/max_scspr_bps`); slippage `min_out`; nonce++; emit `RebalanceExecuted`.
-  - [ ] write `Receipt` to AuditLog (cross-contract, for atomicity).
-- [ ] Wire swap/stake per **Phase-0 mode decision** (Mode A cross-contract calls **or** Mode B escrow-release).
-- [ ] **Guardrail unit tests** (one per invariant): cap breach reverts, non-whitelisted target reverts,
-      slippage revert (`amount_out < min_out`), out-of-bounds allocation reverts, paused blocks action, role gate.
+> **Phase-2 status (2026-06-21):** contracts written + **13 MockVM tests green** (`cargo +nightly test`,
+> all 6 guardrail invariants + AuditLog append-only + stake/swap happy paths). Odra 2.8 needs **nightly**
+> (`box_patterns`) — pinned in `packages/contracts/rust-toolchain.toml`. Decisions D-006 (`u16`→`u32` for
+> the bps ABI), D-007 (on-chain receipt `deploy_hash = 0`, reconciled off-chain), D-008 (AuditLog
+> `admin`+`set_vault` to break the vault↔log init cycle) recorded in `docs/decisions.md`. **Remaining:
+> the two 👤 deploy/hardening items** (need `cargo odra` + funded keys on Testnet).
+
+- [x] **AuditLog** contract (`src/audit_log.rs`) — build + unit-tested first:
+  - [x] `Receipt` storage (§4.2.1); append-only; entry points `record` / `get` / `range` / `latest` / `count`.
+  - [x] Caller gate: only vault/agent may `record`. No update/delete entry points (tamper-evident).
+        (`admin`+`set_vault` added to break the circular vault↔log wiring — D-008.)
+- [x] **SentinelVault** (`src/vault.rs`) — storage + owner surface:
+  - [x] Storage (§4.1.1): owner/agent/paused, policy caps, `day_spent_usd`/`day_epoch`, whitelist, alloc bounds, audit_log, nonce (+ styks/router/scspr/wusdt addresses).
+  - [x] Owner entry points: `init`, `deposit_cspr`, `deposit_token`, `withdraw`, `set_policy`, `set_agent`, `set_whitelist`, `pause`.
+  - [x] Views: `balances`, `policy`, `day_remaining_usd` (+ `is_paused`/`nonce`/`is_whitelisted`).
+- [x] 🔒 **`execute_rebalance`** enforcement flow (§4.1.3 — the heart of bounded autonomy):
+  - [x] role gate (caller == agent), `!paused`, whitelist check, day-epoch roll.
+  - [x] `notional_usd` via on-chain Styks read; per-action cap + daily cap checks (USD micros).
+  - [x] allocation-bounds check (`min/max_scspr_bps`, post-action); slippage `min_out` (quote-floor ∩ agent min_out, re-checked); nonce++; emit `RebalanceExecuted`.
+  - [x] write `Receipt` to AuditLog (cross-contract, for atomicity; `deploy_hash=0` on-chain, reconciled off-chain — D-007).
+- [x] Wire swap/stake per **Phase-0 mode decision** — **Mode A** cross-contract calls (`src/external.rs`: Router/Staking/Cep18/Styks refs).
+- [x] **Guardrail unit tests** (`src/tests.rs`, one per invariant): cap breach reverts, non-whitelisted target reverts,
+      slippage revert (`amount_out < min_out`), out-of-bounds allocation reverts, paused blocks action, role gate. (Mocks in `src/mocks.rs`.)
 - [ ] 👤🔒 **Deploy** both contracts to Testnet (Odra Casper/Livenet backend); record hashes in `CLAUDE.md` registry.
 - [ ] 👤 **Associated-keys hardening** (§4.3): agent key weight 1, owner weight 3; `deployment_threshold = 1`,
       `key_management_threshold = 3`. Verify agent can transact but cannot rekey/escalate.

@@ -1,0 +1,6 @@
+# Odra 2.8's proc-macros use `#![feature(box_patterns)]`, which requires a nightly toolchain.
+# `cargo +nightly test` runs the guardrail suite on the MockVM; `cargo odra build` targets WASM.
+[toolchain]
+channel = "nightly"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

@@ -127,9 +127,10 @@ Plus off-chain disciplines:
 ## Key commands (placeholders — fill in as packages are scaffolded)
 
 ```bash
-# contracts (packages/contracts)
-cargo odra build
-cargo odra test
+# contracts (packages/contracts) — Odra 2.8 needs nightly (box_patterns); pinned in rust-toolchain.toml
+cargo +nightly test           # guardrail suite on the MockVM (13 tests; no network)
+cargo odra build              # WASM build (needs cargo-odra installed)
+cargo odra test               # WASM-backend tests
 # (deploy to Testnet via Odra Livenet backend; record contract hashes in the registry below)
 
 # orchestrator (packages/orchestrator)
