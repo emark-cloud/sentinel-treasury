@@ -14,6 +14,12 @@
     "dev": "node --experimental-strip-types src/index.ts"
   },
   "dependencies": {
-    "@sentinel/shared": "workspace:*"
+    "@casper-ecosystem/casper-eip-712": "^1.2.1",
+    "@modelcontextprotocol/sdk": "^1",
+    "@noble/curves": "^1.6",
+    "@noble/hashes": "^1.5",
+    "@sentinel/shared": "workspace:*",
+    "casper-js-sdk": "^5.0.12",
+    "dotenv": "^16"
   }
 }

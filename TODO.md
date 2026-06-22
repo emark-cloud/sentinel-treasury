@@ -78,6 +78,13 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 > D-007 (on-chain receipt `deploy_hash = 0`), D-008 (AuditLog `admin`+`set_vault` init-cycle), D-009
 > (build toolchain) in `docs/decisions.md`. **Phase 2 COMPLETE (2026-06-21):** both contracts deployed to
 > casper-test + agent account hardened (§4.3) + all verified on-chain — see D-010 and the checked items below.
+>
+> **✅ Redeployed (D-013 + D-014, 2026-06-22):** the Phase-3 live read pinned the Styks TWAP scale at 5
+> decimals (not 9), so `STYKS_TWAP_DECIMALS` was corrected 9 → 5 in `vault.rs` (the old value made the USD
+> caps non-binding). MockVM 13/13 still green. The original deploy was **Locked** (non-upgradable), so an
+> in-place upgrade was impossible — **both contracts were redeployed as upgradable** with the fix. Live,
+> Unlocked hashes: vault `949a9c35…446f20`, AuditLog `95dd52c4…004712`. On-chain USD caps now correctly
+> scaled; `livenet_deploy.rs` patched to `deploy_with_cfg(InstallConfig::upgradable())` for future fixes.
 
 - [x] **AuditLog** contract (`src/audit_log.rs`) — build + unit-tested first:
   - [x] `Receipt` storage (§4.2.1); append-only; entry points `record` / `get` / `range` / `latest` / `count`.
@@ -107,15 +114,40 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 
 ## Phase 3 — Perception & data · packages/orchestrator
 
-- [ ] **Data Service**: Styks TWAP read; CSPR.trade MCP (`market_data`, `pre_trade_analysis`); CSPR.cloud
-      balances/events. Interfaces typed against `packages/shared`.
-- [ ] **Premium x402 endpoint** (we run **both ends**) returning HTTP 402 + payment requirements.
-- [ ] **x402 client**: build payment payload (`casper:casper-test`, `exact`), EIP-712 sign (casper-eip-712),
-      facilitator `/verify` → `/settle`, retry with `X-PAYMENT` header → premium signal.
-- [ ] **x402 budget guard**: one paid pull / loop iteration, hourly CSPR cap, duplicate-request suppression,
-      no-progress backstop.
-- [ ] **Scout agent** → assemble `MarketSnapshot` with per-field **provenance** (VERIFIED/COMPUTED/ESTIMATED);
-      blake2b-hash the snapshot → `perception_hash`; retain full JSON in the artifact store.
+> **Phase-3 status (2026-06-21):** perception layer scaffolded in `packages/orchestrator` —
+> typecheck/lint/build/format clean + **25 vitest tests green**. Deps added: `casper-js-sdk@5.0.12`,
+> `@modelcontextprotocol/sdk`, `@noble/curves`+`@noble/hashes`, `dotenv`. casper-js-sdk ships UMD with
+> no ESM `import` condition (same breakage `tools/cspr-trade-mcp` patches), so `src/casper/sdk.ts` loads
+> it via `createRequire` rather than patching `node_modules`. All network sources sit behind injectable
+> interfaces (live impl + static/scenario impl) so the loop, the §15.3 scenario harness, and tests share
+> one seam. **Live-Testnet validation DONE (2026-06-22, D-012)** — probe scripts in
+> `packages/orchestrator/scripts/`, code tightened to confirmed shapes, gate green:
+> (1) **Styks off-chain TWAP read is READABLE** via the Odra `state`-dictionary key derivation (CSPRUSD
+> store at field index 4, TWAP = avg of `List<Option<U64>>` = 307; heartbeat at index 3). ⚠️ raw U64 is
+> ~5-decimal, NOT 1e6 micros — on-chain cap scaling needs reconciling (D-012). (2) **CSPR.cloud shapes**
+> corrected (`{data}` envelope; `/contracts?contract_package_hash`, `ft-token-ownership`, deploys-by-
+> pubkey). (3) **MCP shapes** corrected (`get_quote` needs `type`/token-unit amount; `get_pair_details`
+> takes a pair package hash; impact tools return prose → curve from `get_quote.priceImpact`; use the
+> self-hosted server for our token registry). (4) **EIP-712 digest byte-matches** the official
+> `@casper-ecosystem/casper-eip-712` (proven vs the published vector); facilitator is **x402 v2** + Casper
+> domain + **ed25519**; one open item: the v2 wire-envelope `scheme` field for live `/settle`.
+
+- [x] **Data Service** (`src/data/`): Styks TWAP + sCSPR exchange-rate on-chain reads (`onchainReader.ts`,
+      casper-js-sdk `queryLatestGlobalState`); CSPR.trade MCP (`mcpClient.ts` — `get_quote`/`get_pair_details`/
+      `estimate_price_impact` → spot/depth/price-impact curve); CSPR.cloud REST balances + package→contract
+      resolution (`csprCloud.ts`); `dataService.ts` fans out in parallel. All typed against `@sentinel/shared`.
+- [x] **Premium x402 endpoint** (`src/x402/premiumServer.ts`, we run **both ends**) — `node:http`, returns
+      HTTP 402 + `PaymentRequirements` (WCSPR asset, `casper:casper-test`, `exact`), 200 + signal on `X-PAYMENT`.
+      Signal value is scenario-injectable (`signalProvider`).
+- [x] **x402 client** (`src/x402/client.ts` + `eip712.ts` + `types.ts`): 402 → build EIP-3009
+      `TransferWithAuthorization` → EIP-712 sign (secp256k1 via `@noble`, pluggable `X402Signer`) →
+      facilitator `/verify` → `/settle` → retry with `X-PAYMENT` header → premium signal.
+- [x] **x402 budget guard** (`src/x402/budgetGuard.ts`): one paid pull / iteration, rolling hourly CSPR cap,
+      duplicate-request suppression (cache window), no-progress backstop. Pure + time-injected; 8 unit tests.
+- [x] **Scout agent** (`src/agents/scout.ts`) → assembles `MarketSnapshot` with per-field **provenance**
+      (VERIFIED/COMPUTED/ESTIMATED), validates against the shared schema, blake2b-hashes → `perception_hash`,
+      retains full JSON in the artifact store (`src/store/artifactStore.ts`, content-addressed by hash for
+      §9.2 verification). Honest fallback: when no Styks TWAP is readable, uses DEX spot labelled `fallback-spot`.
 
 ---
 

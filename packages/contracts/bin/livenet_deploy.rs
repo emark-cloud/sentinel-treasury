@@ -14,12 +14,12 @@
 use odra::casper_types::U256;
 use core::str::FromStr;
 
-use odra::host::Deployer;
+use odra::host::{Deployer, InstallConfig};
 use odra::prelude::{Address, Addressable};
 
-use sentinel_contracts::audit_log::{AuditLog, AuditLogInitArgs};
+use sentinel_contracts::audit_log::{AuditLog, AuditLogHostRef, AuditLogInitArgs};
 use sentinel_contracts::types::PolicyConfig;
-use sentinel_contracts::vault::{SentinelVault, SentinelVaultInitArgs};
+use sentinel_contracts::vault::{SentinelVault, SentinelVaultHostRef, SentinelVaultInitArgs};
 
 /// Parse a raw 64-hex contract package hash (as stored in `.env`) into an Odra contract `Address`.
 /// Odra wraps contracts as `Key::Hash`, i.e. the `hash-` prefix (not `package-`).
@@ -61,14 +61,21 @@ fn main() {
     println!("agent = {}", agent.to_string());
 
     // 1. AuditLog. admin = owner (binds the vault below); agent is an authorized writer from init.
+    // Deployed UPGRADABLE (InstallConfig::upgradable) — the plain `deploy()` installs a *Locked*
+    // Casper package (is_upgradable=false), which is what stranded the first deploy: D-013's scale
+    // fix could not be pushed as an in-place upgrade. Upgradable packages accept new versions.
     env.set_gas(250_000_000_000u64); // 250 CSPR
-    let mut audit_log = AuditLog::deploy(&env, AuditLogInitArgs { admin: owner, agent });
+    let mut audit_log = AuditLog::deploy_with_cfg(
+        &env,
+        AuditLogInitArgs { admin: owner, agent },
+        InstallConfig::upgradable::<AuditLogHostRef>(),
+    );
     let audit_log_addr = audit_log.address();
     println!("AUDITLOG_CONTRACT_HASH={}", audit_log_addr.to_string());
 
     // 2. SentinelVault. Pre-whitelists router + sCSPR staking as the only legal action targets.
     env.set_gas(400_000_000_000u64); // 400 CSPR
-    let vault = SentinelVault::deploy(
+    let vault = SentinelVault::deploy_with_cfg(
         &env,
         SentinelVaultInitArgs {
             owner,
@@ -80,6 +87,7 @@ fn main() {
             scspr,
             wusdt,
         },
+        InstallConfig::upgradable::<SentinelVaultHostRef>(),
     );
     let vault_addr = vault.address();
     println!("VAULT_CONTRACT_HASH={}", vault_addr.to_string());

@@ -68,7 +68,12 @@ get_twap_price(id:String) -> Option<U64>          # PUBLIC, contract-readable �
 get_last_heartbeat() -> Option<U64>               # staleness guard (spec §8)
 get_current_twap_store(id:String) -> List<Option<U64>>;  get_config() -> Any
 ```
-- **OPEN:** confirm the U64 fixed-point scale/decimals of the price in a live read so USD caps scale right.
+- **RESOLVED (2026-06-22, D-012):** the TWAP **is** readable off-chain. Styks stores all state in one
+  Odra dictionary `state`; the CSPRUSD sample buffer (`List<Option<U64>>`, averaged by `get_twap_price`)
+  sits at field **index 4**, `last_heartbeat` at index 3. Dictionary item key =
+  `hex(blake2b256( u32_be(index) ++ CLString("CSPRUSD") ))`. Live value `[307,306,308]` → TWAP 307.
+  **Scale:** raw ≈307 vs live CSPR/USD ≈$0.0023 ⇒ ~**5 decimals** (NOT 1e6 micros) — reconcile the
+  on-chain cap scaling (see D-012). Implemented in `RpcOnChainReader` (`packages/orchestrator`).
 
 ## WUSDT (Wrapped Tether) — CEP-18 (stable refuge)
 
@@ -92,6 +97,7 @@ mint(owner:Key, amount:U256);  burn(owner:Key, amount:U256)   # mint present (en
 2. ⏳ Manual **stake** (resolve the `stake()` purse handoff) — **NOT covered by the CSPR.trade MCP**
    (DEX-only). Still needs a Wise Lending session-WASM purse handoff or Mode-B fallback for the grow
    leg. Risk of stuck funds if done blindly — get Wise integration detail before a live stake.
-3. ⏳ Read a live `get_twap_price("CSPRUSD")` value to fix the U64 scale. Not cleanly readable
-   off-chain (Odra dictionary; entry-point return needs contract execution). Cleanest path: read it
-   contract-to-contract from our Phase-2 vault, or via a tiny throwaway reader session.
+3. ✅ **DONE (2026-06-22, D-012):** read a live CSPRUSD value off-chain via the Odra `state`-dictionary
+   key derivation (no contract execution needed) — `[307,306,308]` → TWAP 307. The U64 carries ~5
+   decimals, not 1e6 micros; on-chain cap scaling needs reconciling (D-012). Re-run:
+   `node packages/orchestrator/scripts/probe-styks.mjs` (named keys) + the derived-key read in D-012.

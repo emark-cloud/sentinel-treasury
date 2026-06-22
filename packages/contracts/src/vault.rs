@@ -20,13 +20,16 @@ use crate::types::{
     VaultBalances,
 };
 
-// --- Valuation scaling (see abi-spike.md open items; centralized so a live read can fix them) ---
+// --- Valuation scaling (confirmed against a live Styks read — D-012; centralized here) ---
 
 /// Decimals of native CSPR / sCSPR base units (motes).
 const CSPR_DECIMALS: u32 = 9;
-/// Decimals of the Styks `get_twap_price` U64 fixed-point USD-per-CSPR value. **Confirm against
-/// a live read** (abi-spike Q3); all USD math keys off this constant.
-pub const STYKS_TWAP_DECIMALS: u32 = 9;
+/// Decimals of the Styks `get_twap_price` U64 fixed-point USD-per-CSPR value. **Confirmed = 5** by
+/// a live Testnet read (D-012): raw CSPRUSD ≈ 307 against a live CSPR/USD ≈ $0.0023 ⇒ raw/1e5 ≈
+/// $0.00307 (the nearest clean power-of-ten; 4 ⇒ 10× high, 6 ⇒ 10× low). All USD cap math keys
+/// off this constant, so it must match the feed: the earlier value (9) under-valued notional by
+/// ~10⁴×, which would have made the per-action/daily USD caps effectively non-binding.
+pub const STYKS_TWAP_DECIMALS: u32 = 5;
 /// Decimals of the USD unit caps are denominated in (micro-USD), matching the 6-decimal stable.
 const USD_DECIMALS: u32 = 6;
 /// The Styks TWAP series id we read for CSPR→USD.

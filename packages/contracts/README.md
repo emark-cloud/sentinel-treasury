@@ -31,13 +31,16 @@ Contracts written; **13 MockVM tests green** (`cargo +nightly test`). Coverage:
 - **AuditLog:** append-only / contiguous `range`·`latest`·`count`·`get`; unauthorized `record` revert.
 - **Happy paths:** stake (records a receipt; notional/twap/alloc asserted) and de-risk swap.
 
-**Deployed to casper-test** (2026-06-21): AuditLog `3f0d61e2…982db`, Vault `b44ac9cc…068f95` (both
-package hashes verified on-chain; `set_vault` wired). The agent account is hardened per §4.3 (owner
-w3 / agent w1, `deployment=1` / `key_management=3`). `cargo odra build` produces distinct optimized
-`wasm/AuditLog.wasm` (~273 KB) / `wasm/SentinelVault.wasm` (~341 KB). See `docs/decisions.md`
-D-006/D-007/D-008 (ABI width / receipt `deploy_hash` / init-cycle), **D-009** (build toolchain —
-pinned `nightly-2026-01-01`, `no_std` scaffold, `build.rs`, `wasm-opt`/`wasm-strip`), and **D-010**
-(deploy + hardening: `bin/livenet_deploy.rs`, public node, `tools/key-hardening/`).
+**Deployed to casper-test** (upgradable redeploy 2026-06-22, D-014): AuditLog `95dd52c4…004712`, Vault
+`949a9c35…446f20` (both `lock_status: Unlocked`, verified on-chain; `set_vault` wired). These carry the
+D-013 `STYKS_TWAP_DECIMALS=5` scale fix and supersede the Locked Phase-2 pair (AuditLog `3f0d61e2…982db`,
+Vault `b44ac9cc…068f95`, 2026-06-21), which could not be upgraded in place. The agent account is hardened
+per §4.3 (owner w3 / agent w1, `deployment=1` / `key_management=3`) — account-level, unaffected by the
+redeploy. `cargo odra build` produces distinct optimized `wasm/AuditLog.wasm` (~273 KB) /
+`wasm/SentinelVault.wasm` (~341 KB). See `docs/decisions.md` D-006/D-007/D-008 (ABI width / receipt
+`deploy_hash` / init-cycle), **D-009** (build toolchain — pinned `nightly-2026-01-01`, `no_std` scaffold,
+`build.rs`, `wasm-opt`/`wasm-strip`), **D-010** (deploy + hardening: `bin/livenet_deploy.rs`, public node,
+`tools/key-hardening/`), and **D-013/D-014** (scale fix + upgradable redeploy).
 
 ### Build prerequisites
 

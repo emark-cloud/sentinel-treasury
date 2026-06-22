@@ -11,6 +11,7 @@ export default tseslint.config(
       '**/coverage/**',
       'packages/contracts/**',
       'tools/**',
+      'packages/*/scripts/**', // live-validation probe scripts (Node globals; not built)
     ],
   },
   js.configs.recommended,

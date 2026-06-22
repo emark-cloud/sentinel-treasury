@@ -52,7 +52,9 @@ impl AuditLog {
         self.count.set(0);
     }
 
-    /// Bind the vault contract permitted to append. Admin-only, one-time wiring.
+    /// Bind the vault contract permitted to append. Admin-only; typically called once at deploy
+    /// time, but re-callable by admin (no one-time guard) so the writer can be re-pointed if the
+    /// vault is redeployed.
     pub fn set_vault(&mut self, vault: Address) {
         let admin = self.admin.get_or_revert_with(Error::Unauthorized);
         if self.env().caller() != admin {

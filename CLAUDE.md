@@ -146,9 +146,15 @@ pnpm --filter dashboard dev
 Values to obtain (none are public URLs; source via protocol Testnet UIs, cspr.live, docs/Discords, mentors):
 
 ```
-# Our deployed contracts (Phase-2 deploy, casper-test, 2026-06-21 — package hashes)
-VAULT_CONTRACT_HASH=b44ac9cc720e30f0568c74612e984fc27b262dc7ea4ca4b0e1fa664ff3068f95     # deploy tx 010e3168…; init owner/agent + conservative demo policy
-AUDITLOG_CONTRACT_HASH=3f0d61e2e1895f7810e59ffa168749058ac981bd5fa18a887a2eecdbc3d982db  # deploy tx 034015f3…; set_vault tx c3407329… binds vault as writer
+# Our deployed contracts (UPGRADABLE redeploy, casper-test, 2026-06-22 — package hashes; D-013)
+# Unlocked packages carrying the STYKS_TWAP_DECIMALS=5 scale fix. The original Phase-2 deploy was
+# installed Locked (is_upgradable=false), so the fix could not be pushed as an in-place upgrade —
+# redeployed both as upgradable; existing AuditLog entries were discarded.
+VAULT_CONTRACT_HASH=949a9c359d12bf02a9f630c8eaeb1459348da6880e563d4ac278077a2f446f20     # deploy tx a2550fe1…; init owner/agent + conservative demo policy
+AUDITLOG_CONTRACT_HASH=95dd52c4fc07bb42ce8648f2cf74a8839244410de31b68045b96cb95cf004712  # deploy tx bf796d3b…; set_vault tx 48a8e9a5… binds vault as writer
+# Superseded (Locked / mis-scaled, abandoned 2026-06-22):
+#   VAULT_CONTRACT_HASH=b44ac9cc720e30f0568c74612e984fc27b262dc7ea4ca4b0e1fa664ff3068f95
+#   AUDITLOG_CONTRACT_HASH=3f0d61e2e1895f7810e59ffa168749058ac981bd5fa18a887a2eecdbc3d982db
 
 # Keys
 OWNER_PUBLIC_KEY=            # weight 3, key-management

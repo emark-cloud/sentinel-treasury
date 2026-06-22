@@ -223,3 +223,111 @@ pairs WETH–sCSPR contract `30891f…236f7` (pkg `59c4…98aa1`), WrTether–WE
   `key_management=3`. The agent signs `execute_rebalance` but cannot rekey/escalate; owner keeps recovery.
 - **Note:** the agent account is still a Condor *legacy* account; the v1 key-management host functions
   apply cleanly to it.
+
+## D-011 — casper-js-sdk ESM loader shim (no node_modules patch) — DECIDED (2026-06-21, Phase 3)
+
+- **Context:** `packages/orchestrator` is ESM (`"type":"module"`, NodeNext). `casper-js-sdk@5.0.12`
+  ships a UMD/CJS bundle with **no `import` condition** in its `exports`, so `import { RpcClient } from
+  'casper-js-sdk'` resolves named bindings to `undefined` at runtime (the same breakage `tools/cspr-trade-mcp`
+  patches with an ESM wrapper).
+- **Decision:** load the SDK once via `createRequire(import.meta.url)('casper-js-sdk')` in
+  `src/casper/sdk.ts` and re-export the values we use; types come from `export type` (erased at compile,
+  so they don't hit the broken runtime resolution). No `node_modules` patch/postinstall needed — keeps the
+  workaround in-repo and reinstall-safe.
+- **Consequence:** all SDK use in the orchestrator imports from the shim, not the package directly.
+
+## D-012 — Phase-3 perception layer: source seams + open live-validation items — DECIDED (2026-06-21)
+
+- **Decision (architecture):** every network source is an injectable interface with a live impl **and** a
+  static/scenario impl (`PriceFeed`/`ExchangeRateFeed`, `MarketDataProvider`, `BalanceReader`, `X402Signer`,
+  `ArtifactStore`). The loop, the §15.3 demo scenario harness, and unit tests share one seam; the scenario
+  price injection is therefore a first-class, **labelled** mechanism (`StaticPriceFeed` source
+  `scenario-injection`), not a hack.
+- **Decision (USD scale):** the off-chain layer reports prices in **USD micros (1e6)** (`PRICE_SCALE`),
+  but the **raw Styks U64 is NOT micros** — see the live finding below.
+
+### D-012 live-Testnet validation — RESOLVED (2026-06-22)
+
+All four open items were exercised against live Testnet (probe scripts in
+`packages/orchestrator/scripts/`, re-runnable). Code tightened to the confirmed shapes; full gate green
+(typecheck/lint/format/build + 26 vitest).
+
+1. **Styks off-chain TWAP read — READABLE (resolved).** Styks is an Odra contract: all storage lives in
+   one dictionary named **`state`** (the Odra `STATE_KEY`). The CSPRUSD feed is the *sample ring buffer*
+   `get_current_twap_store` = `List<Option<U64>>`; `get_twap_price` is its **simple average** (Styks docs).
+   The dictionary item key is the Odra-derived `hex(blake2b256( u32_be(field_index) ++ CLString(id) ))`.
+   On Testnet the CSPRUSD store is at **field index 4**, `last_heartbeat` (Odra `Var`, `Option<U64>`, unix
+   **seconds**) at **index 3**. Live read of the derived key returned `[Some(307),Some(306),Some(308)]` →
+   TWAP 307. `RpcOnChainReader.readTwap`/`readHeartbeat` now do this derivation+parse (still best-effort →
+   `fallback-spot` on failure). `odraDictionaryItemKey` + `averageTwapFromBytes` are unit-checkable helpers.
+   - **⚠️ Scale finding (cross-cutting) — RECONCILED in source (D-013):** raw CSPRUSD ≈ **307** while live
+     CSPR/USD ≈ **$0.0023**, so the feed carries **5 decimals** (raw/1e5 ≈ $0.00307), **not** the 1e6
+     micro-USD first assumed. Off-chain uses `STYKS_RAW_DECIMALS = 5`; the contract's `STYKS_TWAP_DECIMALS`
+     was corrected **9 → 5** (the old 9 under-valued notional ~10⁴×, making the USD caps non-binding). See
+     **D-013** (fix) and **D-014** — shipped on-chain via an upgradable redeploy (2026-06-22); new hashes
+     vault `949a9c35…446f20`, AuditLog `95dd52c4…004712`.
+   - **RPC auth note:** the cspr.cloud node RPC needs the access-token header (plain SDK handler 401s);
+     the public node `node.testnet.casper.network/rpc` needs none. Point `NODE_RPC_URL` accordingly.
+2. **CSPR.cloud REST shapes — RESOLVED.** Every endpoint wraps the body in `{ data, item_count?,
+   page_count? }`. Corrections in `csprCloud.ts`: package→contract resolution is
+   `/contracts?contract_package_hash=…` (the `/contract-packages/{h}` record carries **no** active hash);
+   CEP-18 balances are `/accounts/{accountHash}/ft-token-ownership?contract_package_hash=…` (array, keyed
+   by **account hash + package hash** — no contract-hash resolution needed for balances); the deploys feed
+   is keyed by **public key** (account hash → `failed to parse public_key`) with fields `deploy_hash`,
+   `timestamp`, `status`, `error_message` (no `type`). Verified: agent WUSDT balance `444509`.
+3. **CSPR.trade MCP shapes — RESOLVED.** `get_quote` requires `{token_in,token_out,amount,type}` with
+   `type ∈ {exact_in,exact_out}` and `amount` a token-unit string → JSON `{amountOut, executionPrice,
+   midPrice, priceImpact, recommendedSlippageBps, …}`. `get_pair_details` takes `{pair}` = **pair package
+   hash** → `{token0/1{packageHash,symbol,decimals}, reserve0/1, fiatPrice0/1 (null on Testnet)}`.
+   `estimate_price_impact`/`estimate_slippage`/`analyze_trade` return **prose**, not JSON → the impact
+   curve is derived from `get_quote.priceImpact`. `mcpClient.ts` rewritten accordingly. **Network caveat:**
+   the public `mcp.cspr.trade` resolves a *different* token registry (its WCSPR/sCSPR hashes ≠ ours), so the
+   orchestrator must use the **self-hosted** server (`CSPR_TRADE_NETWORK=testnet`) for our hashes.
+4. **EIP-712 byte-match — PROVEN (digest); v2 envelope partial.** The hand-rolled encoder was wrong for
+   Casper (it used a numeric `chainId`/`verifyingContract` EVM domain, 20-byte address right-align, and
+   secp256k1). Live facts: the facilitator advertises **x402Version 2** (`/supported`, with per-network
+   `feePayer`) and the Casper EIP-712 domain uses custom fields **`chain_name` (string) +
+   `contract_package_hash` (bytes32)**, keccak256 hashing, addresses encoded as `keccak256(33-byte public
+   key)`, and **ed25519** signing for our `01…` agent key. Resolved by depending on the official
+   **`@casper-ecosystem/casper-eip-712`** package and reproducing its published
+   `casper_transfer_with_authorization` digest **byte-for-byte**
+   (`0x8868576c…604288`, now a unit test). `eip712.ts` rewritten around it with `Ed25519X402Signer`
+   (Casper tag `01`); the x402 client/server default to **v2**; `VerifyResponse.invalidMessage` added.
+   **Remaining (one item):** the facilitator's v2 *wire envelope* rejects with `invalid scheme:` (empty) —
+   it reads a signature-scheme field we haven't located (object payloads + flat requirements confirmed; the
+   digest/domain match is proven). Needs the facilitator's v2 payload schema/example before live `/settle`.
+
+## D-013 — Styks TWAP scale reconciled in the vault (`STYKS_TWAP_DECIMALS` 9 → 5) — DECIDED (2026-06-22)
+
+- **Context:** the D-012 live read pinned the Styks `get_twap_price("CSPRUSD")` U64 at **5 decimals**
+  (raw ≈307 ≈ $0.00307; nearest clean power-of-ten to the live ≈$0.0023). The vault valued notional with
+  `STYKS_TWAP_DECIMALS = 9` (`cspr_to_usd: micro_usd = amount × twap / 10^(9 + TWAP_DEC − 6)`), which
+  under-valued every action ~10⁴×, i.e. the per-action ($50) and daily ($200) **USD caps were effectively
+  non-binding** — the central hard invariant (spec §11) was silently defeated.
+- **Decision:** set `STYKS_TWAP_DECIMALS = 5` in `vault.rs`. Verified with the MockVM suite (13/13): a
+  100-CSPR action at the live scale (TWAP `2_000` = $0.02/CSPR, 5 dp) values to exactly $2, so the
+  cap-breach / daily-cap / happy-path assertions hold under the corrected constant (test `TWAP` retuned
+  `20_000_000` → `2_000` to keep the same $0.02 scenario; off-chain `STYKS_RAW_DECIMALS = 5` already agrees).
+- **Consequence — resolved via redeploy (see D-014):** the original Testnet vault (`b44ac9cc…068f95`,
+  D-010) carried the old constant in its WASM. An in-place Odra upgrade turned out to be **impossible**
+  (the package was deployed Locked — D-014), so both contracts were redeployed as upgradable on 2026-06-22
+  with the corrected constant. New hashes: vault `949a9c35…446f20`, AuditLog `95dd52c4…004712`.
+  Re-confirm `STYKS_TWAP_DECIMALS` if Styks ever rotates the feed's published decimals.
+
+## D-014 — Original contracts were Locked; redeployed both as upgradable — DECIDED (2026-06-22)
+
+- **Context:** shipping the D-013 scale fix on-chain required either an in-place upgrade or a redeploy.
+  CLAUDE.md / the README described the contracts as `odra_cfg_is_upgradable = true`, but on-chain query
+  of package `b44ac9cc…068f95` returned **`lock_status: Locked`**. Root cause: `bin/livenet_deploy.rs`
+  used `SentinelVault::deploy()` / `AuditLog::deploy()`, which Odra routes through `try_deploy` with
+  `InstallConfig::new(false, true)` → `is_upgradable = false` (`odra-core` 2.8.1 `host.rs:227`); the
+  `#[odra::module]` annotation never enabled it either. A Locked Casper package accepts no new contract
+  versions, so `try_upgrade` cannot succeed.
+- **Decision:** redeploy **both** contracts as upgradable. Patched `livenet_deploy.rs` to
+  `deploy_with_cfg(…, InstallConfig::upgradable::<…HostRef>())` so future fixes are real Odra upgrades.
+  Verified post-deploy: both new packages report `lock_status: Unlocked`. The existing AuditLog could
+  have been reused (`set_vault` has no one-time guard despite its doc comment — it only checks
+  `caller == admin`), but a clean upgradable pair was preferred; prior audit entries were discarded
+  (none of value at Phase 3). Deploy txs: AuditLog `bf796d3b…`, vault `a2550fe1…`, set_vault `48a8e9a5…`.
+- **Note:** the agent-account hardening (§4.3) is account-level, not contract-level, so it was unaffected
+  by the redeploy — no re-hardening needed.

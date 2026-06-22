@@ -12,3 +12,4 @@ package-lock.json
 docs
 tools
 keys
+packages/*/scripts

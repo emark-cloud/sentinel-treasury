@@ -16,8 +16,8 @@ use crate::types::{
 };
 use crate::vault::{Error as VaultError, SentinelVault, SentinelVaultHostRef, SentinelVaultInitArgs};
 
-/// 1 CSPR = 0.02 USD, Styks U64 scaled by 10^9 → 0.02 * 1e9.
-const TWAP: u64 = 20_000_000;
+/// 1 CSPR = 0.02 USD at the live-confirmed Styks scale (5 decimals, D-012) → 0.02 * 1e5.
+const TWAP: u64 = 2_000;
 
 fn cspr512(n: u64) -> U512 {
     U512::from(n) * U512::from(1_000_000_000u64)
