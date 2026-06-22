@@ -153,17 +153,34 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 
 ## Phase 4 — Agents & decision · packages/orchestrator
 
-- [ ] **Risk agent** (Gemini 2.5 Flash) → `RiskVerdict` (regime, riskScore, drivers, hardLimits, rationale).
-- [ ] **Treasury agent** → `AllocationProposal` (targetBps, action, expectedSlippageBps, rationale).
-      Strict JSON schema + low temp + parse-validate-retry (one repair) → else fallback.
-- [ ] **Deterministic rule engine** (pure functions): regime→allocation mapping + **clamp** (intersect LLM
-      proposal with regime legal band ∩ Risk hardLimits). This is the outer envelope, not just a safety net.
-- [ ] **Deliberation protocol** (proposer–critic, default R=2): Treasury proposes → Risk APPROVE/REJECT →
-      revise → consensus, else `DeterministicFallback` flagged `consensus:false`. Capture **verbatim transcript**;
-      blake2b-hash the `Decision` → `decision_hash`.
-- [ ] **Decision logic** (§7): USD normalization via TWAP (incl. sCSPR exchange rate); `delta_usd` → **single
-      largest corrective action**; size = `min(|delta|, per_action_cap, risk.maxActionUsd, day_remaining)`;
-      MCP `pre_trade_analysis` slippage sizing (shrink or NoOp); derive `minOut`.
+> **Phase-4 status (2026-06-22):** agents + decision layer landed in `packages/orchestrator` —
+> typecheck/lint/build/format clean + **64 vitest tests green** (38 new). No new runtime deps: the
+> Gemini client (`src/llm/gemini.ts`) is a thin `fetch` wrapper on the AI Studio `generateContent`
+> REST endpoint (`responseMimeType` + `responseSchema` + low temp). Everything sits behind an
+> injectable `LlmClient` (`src/llm/types.ts`) so the deliberation tests + §15.3 scenario harness run
+> with a `ScriptedLlmClient` and no network — same seam as the Phase-3 data sources. The Risk critic
+> is a **deterministic** veto (`critiqueProposal`), so the proposer–critic debate is reproducible and
+> testable; Treasury is the LLM proposer. The on-chain action is always re-derived deterministically
+> by the sizing module (no free-form amount reaches the chain); `minOut` from the slippage ceiling.
+
+- [x] **Risk agent** (`src/agents/risk.ts`, Gemini 2.5 Flash) → `RiskVerdict` (regime, riskScore,
+      drivers, hardLimits, rationale). Output **sanitized** into the policy/regime envelope; LLM-fail →
+      `deterministicVerdict` (regime from `regimeRiskScore`).
+- [x] **Treasury agent** (`src/agents/treasury.ts`) → `AllocationProposal` (targetBps, action,
+      expectedSlippageBps, rationale). Strict JSON schema + temp 0 + parse-validate-retry (one repair via
+      `generateValidated`) → else `fallbackProposal`.
+- [x] **Deterministic rule engine** (`src/decision/ruleEngine.ts`, pure functions): `REGIME_BANDS`,
+      `fallbackAllocation` (regime→allocation), `clampTargetBps` (intersect proposal with regime band ∩
+      policy bounds ∩ Risk `hardLimits`), `classifyRegime`/`deterministicVerdict`, `critiqueProposal`.
+      The outer envelope, not just a safety net.
+- [x] **Deliberation protocol** (`src/decision/deliberate.ts` `Deliberator`, default R=2): Treasury
+      proposes → Risk (deterministic) APPROVE/REJECT → revise → consensus, else `DeterministicFallback`
+      flagged `consensus:false, source:'fallback'`. Verbatim `transcript`; `DecisionEngine` validates +
+      blake2b-hashes the `Decision` → `decision_hash` + retains it in the artifact store.
+- [x] **Decision logic** (§7): `src/decision/normalize.ts` (USD valuation via TWAP incl. sCSPR exchange
+      rate, gas buffer excluded, weights bps) + `src/decision/sizing.ts` (`delta_usd` → **single largest
+      corrective action**; size = `min(|delta|, per_action_cap, risk.maxActionUsd, day_remaining)`;
+      price-impact-curve slippage shrink or NoOp; `minOut`; pre/post alloc bps for the receipt).
 
 ---
 

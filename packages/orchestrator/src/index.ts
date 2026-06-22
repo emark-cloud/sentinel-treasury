@@ -3,8 +3,9 @@
  *
  * Phase 3 (perception & data) public surface: config, artifact store, data service + sources,
  * the x402 payment stack (premium endpoint, client, budget guard), and the Scout agent that
- * assembles the hashed `MarketSnapshot`. Decision (Phase 4) and execution/proof (Phase 5) land
- * on top of these seams.
+ * assembles the hashed `MarketSnapshot`. Phase 4 (agents & decision) adds the LLM seam, the
+ * Risk/Treasury agents, the deterministic rule engine, and the deliberation/decision engine.
+ * Execution/proof (Phase 5) lands on top of these seams.
  */
 import { hashCanonical } from '@sentinel/shared';
 import type { Decision } from '@sentinel/shared';
@@ -34,3 +35,18 @@ export * from './x402/premiumServer.js';
 
 // Scout agent (spec §6.1)
 export * from './agents/scout.js';
+
+// LLM seam (spec §6.4)
+export * from './llm/types.js';
+export * from './llm/gemini.js';
+
+// Risk & Treasury agents (spec §6.1)
+export * from './agents/risk.js';
+export * from './agents/treasury.js';
+
+// Decision layer: rule engine, normalization, sizing, deliberation (spec §6.2, §6.5, §7)
+export * from './decision/types.js';
+export * from './decision/ruleEngine.js';
+export * from './decision/normalize.js';
+export * from './decision/sizing.js';
+export * from './decision/deliberate.js';
