@@ -50,3 +50,20 @@ export * from './decision/ruleEngine.js';
 export * from './decision/normalize.js';
 export * from './decision/sizing.js';
 export * from './decision/deliberate.js';
+
+// Execution layer (spec §8): codec, chain client, signer, tx builder, service, guards
+export * from './execution/clbytes.js';
+export * from './execution/serialize.js';
+export * from './execution/chainClient.js';
+export * from './execution/signer.js';
+export * from './execution/transaction.js';
+export * from './execution/cycleStore.js';
+export * from './execution/executionService.js';
+export * from './execution/circuitBreaker.js';
+export * from './execution/oracleGuard.js';
+
+// Proof layer (spec §9): receipt codec/reader, verification, explorer links
+export * from './proof/receiptCodec.js';
+export * from './proof/receiptReader.js';
+export * from './proof/csprLive.js';
+export * from './proof/verify.js';

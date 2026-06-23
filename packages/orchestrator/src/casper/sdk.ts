@@ -24,9 +24,12 @@ export const {
   CLValueString,
   Args,
   PublicKey,
+  PrivateKey,
+  KeyAlgorithm,
   Key,
   ContractHash,
   Conversions,
+  ContractCallBuilder,
 } = sdk;
 
 export type {
@@ -34,4 +37,8 @@ export type {
   HttpHandler as HttpHandlerT,
   StoredValue,
   CLValue as CLValueT,
+  PrivateKey as PrivateKeyT,
+  PublicKey as PublicKeyT,
+  Transaction as TransactionT,
+  Args as ArgsT,
 } from 'casper-js-sdk';

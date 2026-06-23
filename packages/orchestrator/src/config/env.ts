@@ -65,7 +65,35 @@ export interface OrchestratorConfig {
   gemini: { apiKey: string; model: string };
   agentPublicKey: string;
   ownerPublicKey: string;
+  /** Host-local PEM paths for the bounded agent / owner signing keys (spec §8.1). */
+  agentSecretKeyPath: string | undefined;
+  ownerSecretKeyPath: string | undefined;
   contracts: ContractRegistry;
+  execution: ExecutionSettings;
+}
+
+/** Execution + guard tunables (spec §8, §11). Gas is in motes (1 CSPR = 1e9 motes). */
+export interface ExecutionSettings {
+  /** Gas payment for `execute_rebalance` (cross-contract swap is the costly case). */
+  rebalancePaymentMotes: number;
+  /** Gas payment for the owner `pause` kill switch. */
+  pausePaymentMotes: number;
+  /** Finality poll interval / overall timeout (ms). */
+  pollIntervalMs: number;
+  pollTimeoutMs: number;
+  /** Consecutive reverts that trip the circuit breaker (spec §11). */
+  maxConsecutiveReverts: number;
+  /** Oracle-staleness guard thresholds (spec §8). */
+  maxHeartbeatAgeSec: number;
+  maxDivergenceBps: number;
+}
+
+function optNum(name: string, fallback: number): number {
+  const v = process.env[name];
+  if (v === undefined || v === '') return fallback;
+  const n = Number(v);
+  if (!Number.isFinite(n)) throw new Error(`invalid numeric env var ${name}: ${v}`);
+  return n;
 }
 
 /**
@@ -89,6 +117,8 @@ export function loadConfig(): OrchestratorConfig {
     },
     agentPublicKey: req('AGENT_PUBLIC_KEY'),
     ownerPublicKey: req('OWNER_PUBLIC_KEY'),
+    agentSecretKeyPath: opt('AGENT_SECRET_KEY_PATH'),
+    ownerSecretKeyPath: opt('OWNER_SECRET_KEY_PATH'),
     contracts: {
       vault: req('VAULT_CONTRACT_HASH'),
       auditLog: req('AUDITLOG_CONTRACT_HASH'),
@@ -97,6 +127,15 @@ export function loadConfig(): OrchestratorConfig {
       wcspr: req('WCSPR_HASH'),
       stable: req('STABLE_TOKEN_HASH'),
       styks: req('STYKS_PRICE_FEED_HASH'),
+    },
+    execution: {
+      rebalancePaymentMotes: optNum('EXEC_REBALANCE_PAYMENT_MOTES', 20_000_000_000),
+      pausePaymentMotes: optNum('EXEC_PAUSE_PAYMENT_MOTES', 2_500_000_000),
+      pollIntervalMs: optNum('EXEC_POLL_INTERVAL_MS', 5_000),
+      pollTimeoutMs: optNum('EXEC_POLL_TIMEOUT_MS', 180_000),
+      maxConsecutiveReverts: optNum('EXEC_MAX_CONSECUTIVE_REVERTS', 3),
+      maxHeartbeatAgeSec: optNum('ORACLE_MAX_HEARTBEAT_AGE_SEC', 5_400),
+      maxDivergenceBps: optNum('ORACLE_MAX_DIVERGENCE_BPS', 500),
     },
   };
 }

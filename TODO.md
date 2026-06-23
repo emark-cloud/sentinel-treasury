@@ -186,14 +186,41 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 
 ## Phase 5 — Execution & proof · packages/orchestrator
 
-- [ ] **Execution Service**: casper-js-sdk **v5** `TransactionV1` targeting `execute_rebalance`; sign with the
-      bounded **agent key** (host-local); submit to Testnet RPC; poll for finality (Zug); capture `deploy_hash`.
-- [ ] **Idempotency & recovery**: `cycle_id`; persist intended action → `deploy_hash` → finality; reconcile
-      in-flight deploys on restart (no double-execution).
-- [ ] **Circuit breaker**: auto-pause (owner `pause(true)`) on N consecutive `Reverted` / anomalous loss.
-- [ ] **Oracle-staleness guard**: reject cycle if Styks heartbeat stale or TWAP/spot divergence beyond threshold.
-- [ ] **Proof**: write `Receipt` to AuditLog; implement the **§9.2 verification procedure** (fetch artifacts,
-      recompute blake2b, assert equality with on-chain hashes, open `deploy_hash` on cspr.live).
+> **Phase-5 status (2026-06-22):** execution + proof layers landed in `packages/orchestrator` —
+> typecheck/lint/build/format clean + **90 vitest tests green** (26 new). No new runtime deps.
+> The riskiest piece — encoding the Odra `RebalanceParams` struct arg for casper-js-sdk — is solved
+> by a byte-exact `bytesrepr` codec (`execution/clbytes.ts`) wrapped in `CLValue.newCLAny(...)`:
+> Odra reads a named arg as the CLValue's raw value bytes, so the declared CLType is irrelevant and
+> only the bytes must match (verified against the contract crates: unit enums → `u8`, structs →
+> concatenated fields, `Address` → `Key` = `Account 0x00`/`Contract 0x01` + 32 bytes, `U256` →
+> length-prefixed LE, `Vec` → u32 count). The vault is called **by package hash** (upgrade-stable).
+> All chain I/O sits behind a `ChainClient` seam (live `RpcChainClient` + test fakes), the same
+> discipline as the Phase-3 sources. Swap **routes** are derived in the execution layer (never from
+> the LLM): de-risk `[sCSPR,WCSPR,WUSDT]` per abi-spike. **D-015** records the arg-encoding approach
+> and the two open live-confirmation items (the AuditLog `count`/`receipts` Odra field indices,
+> defaulted 3/4 from declaration order; and a live `execute_rebalance` submission).
+
+- [x] **Execution Service** (`src/execution/`): casper-js-sdk **v5** `ContractCallBuilder` →
+      `execute_rebalance` (`transaction.ts`, by **package hash**); `RebalanceParams` arg encoded via
+      `clbytes.ts`+`serialize.ts` (`CLValue.newCLAny`); host-local **agent key** signer (`signer.ts`,
+      PEM, ed25519/secp256k1 by pubkey prefix); submit + poll-to-finality capturing `deployHash`
+      (`executionService.ts`) behind the `ChainClient` seam (`chainClient.ts`). NoOp short-circuits
+      (no tx).
+- [x] **Idempotency & recovery** (`cycleStore.ts`): per-`cycleId` journal `pending → submitted →
+      finalized|failed|skipped`; intended action → `deployHash` → result persisted; `reconcile()`
+      settles in-flight transactions on restart (no double-execution); re-`execute()` of a known
+      cycle never re-submits.
+- [x] **Circuit breaker** (`circuitBreaker.ts`): pure state machine; trips on N consecutive
+      `Reverted` or an anomalous single-cycle USD loss; emits `shouldPause` exactly once →
+      `buildPauseTx` (owner `pause(true)`); owner `reset()`.
+- [x] **Oracle-staleness guard** (`oracleGuard.ts`): pure check rejecting a cycle when the Styks
+      heartbeat is stale/unreadable or TWAP/spot divergence exceeds the bps ceiling.
+- [x] **Proof** (`src/proof/`): `Receipt` `bytesrepr` codec (`receiptCodec.ts`, round-trippable);
+      AuditLog reader over the Odra `state` dictionary (`receiptReader.ts`); the **§9.2 verification
+      procedure** (`verify.ts` — fetch artifacts, recompute blake2b, assert equality with the
+      on-chain `perception_hash`/`decision_hash`, flag the D-007 zero `deploy_hash`) + cspr.live deep
+      links (`csprLive.ts`). The vault writes the receipt cross-contract atomically (Phase 2), so the
+      off-chain layer reads + verifies rather than writing.
 
 ---
 

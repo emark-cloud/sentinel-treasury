@@ -6,6 +6,36 @@ spike / data) · `DECIDED` · `REVISITED`.
 
 ---
 
+## D-015 — Phase-5 execution arg encoding + open live items — DECIDED (2026-06-22)
+
+- **Status:** DECIDED — 2026-06-22, Phase 5 (execution & proof).
+- **Context:** `SentinelVault::execute_rebalance(params: RebalanceParams)` takes an `#[odra::odra_type]`
+  struct arg. casper-js-sdk v5 has no generic struct CLValue codec, and we won't patch `node_modules`
+  or hand-roll via `casper-client`.
+- **Decision:** encode the struct's exact Casper `bytesrepr` in TS (`execution/clbytes.ts` +
+  `serialize.ts`) and wrap it in **`CLValue.newCLAny(bytes)`**. Odra reads a named arg as the
+  CLValue's raw *value* bytes and applies `FromBytes`, so the declared CLType is irrelevant — only
+  the bytes must match. Wire format confirmed against the contract + odra-macros 2.8 crates: unit
+  enums (`ActionKind`/`Regime`/`Asset`) → a single `u8` variant index; structs → fields concatenated
+  in declaration order; `U256`/`U512` → 1 length byte + minimal LE; `u64`/`u32` → fixed LE;
+  `[u8;32]` → 32 raw bytes; `Address` → `Key` bytes (`Account = 0x00 ++ 32`, `Contract` → `Key::Hash`
+  `= 0x01 ++ 32`); `Vec<T>` → `u32` count + elements. The vault is called **by package hash**
+  (`ContractCallBuilder.byPackageHash`) so upgrades don't move the call target.
+- **Consequence:** the same codec parses `Receipt` back from the AuditLog Odra `state` dictionary
+  (`proof/receiptCodec.ts` + `receiptReader.ts`) for §9.2 verification. Swap **routes** are derived
+  in the execution layer from the configured token packages (never from the LLM): de-risk
+  `[sCSPR,WCSPR,WUSDT]` (abi-spike proven), re-risk the reverse.
+- **Open (live-confirm, mirrors D-012 for Styks):**
+  1. **AuditLog Odra field indices** for `count`/`receipts` are defaulted to **3/4** from declaration
+     order (`admin,vault,agent,count,receipts`); a live dictionary read should confirm them (they are
+     overridable on `AuditLogReceiptReader`). The reader is best-effort (`null` on miss), so a wrong
+     index degrades gracefully.
+  2. **Live `execute_rebalance` submission** with the agent key (build→sign→submit→finality) is not
+     yet exercised on Testnet — all Phase-5 logic is covered by unit tests behind the `ChainClient`
+     seam; the live round-trip is the remaining integration step before the demo.
+
+---
+
 ## Confirmed Testnet contract hashes (2026-06-20)
 
 Verified via CSPR.cloud REST (`/contract-packages/{hash}`), descriptions/owner matched:
