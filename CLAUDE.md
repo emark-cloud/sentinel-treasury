@@ -137,8 +137,10 @@ cargo odra test               # WASM-backend tests
 pnpm --filter orchestrator dev
 pnpm --filter orchestrator test
 
-# dashboard (apps/dashboard)
-pnpm --filter dashboard dev
+# dashboard (apps/dashboard) — Next.js 15 / React 19, dark command-center (Phase 6)
+pnpm --filter @sentinel/dashboard dev         # dev server on http://localhost:3100
+pnpm --filter @sentinel/dashboard build       # next build (static-renders the page)
+pnpm --filter @sentinel/dashboard typecheck
 ```
 
 ## Config / env registry (fill in as the build progresses — see resources.md §9 & spec §13)

@@ -8,6 +8,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/node_modules/**',
       '**/.next/**',
+      '**/next-env.d.ts', // Next.js-generated; its triple-slash reference is required
       '**/coverage/**',
       'packages/contracts/**',
       'tools/**',

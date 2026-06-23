@@ -6,6 +6,32 @@ spike / data) · `DECIDED` · `REVISITED`.
 
 ---
 
+## D-016 — Dashboard demo data seam: scenario-driven, real hashing/verify — DECIDED (2026-06-23)
+
+- **Status:** DECIDED — 2026-06-23, Phase 6 (dashboard).
+- **Context:** the Phase-6 dashboard (`apps/dashboard`, Next.js 15 / React 19) is a presentation
+  surface that must render the full perceive→decide→act→prove loop with the design.md motion beat. The
+  live loop *runner* (a long-running orchestrator process emitting cycles over CSPR.cloud SSE) is
+  Phase-7 work; the orchestrator today ships the loop's building blocks as libraries, not a stream.
+- **Decision:** drive the dashboard from a **`CycleSource` seam** (`lib/scenario.ts`) with a
+  `ScenarioSource` demo implementation that synthesizes complete cycles from the **real
+  `@sentinel/shared` shapes** (`MarketSnapshot` / `Decision` / `Receipt`) and the **real canonical-JSON
+  blake2b hashing**. This mirrors the orchestrator's injectable-source discipline (Phase 3/4/5): a
+  live SSE-backed source drops in behind the same interface in Phase 7 with no panel changes. The
+  receipt-feed **verify** button recomputes genuine `blake2b(snapshot)==perception_hash` /
+  `blake2b(decision)==decision_hash` in-browser (`lib/verify.ts`) — the proof half is not mocked.
+- **Honesty (spec §15.3 / design.md §8):** scenario controls are visibly tagged `demo` and styled
+  apart (dashed amber); a persistent `Testnet` tag sits in the top bar; deploy/settle hashes link to
+  `testnet.cspr.live`. The demo-generated `deploy_hash`/`settle_tx` values are random placeholders
+  until the live runner lands — they are clearly the simulated half (only the trigger is injected; on a
+  live deployment everything downstream is real). Contract hashes, whitelist, key weights and policy in
+  the guardrail panel are the **real** deployed values from the CLAUDE.md registry.
+- **Consequence:** no chart dependency was added — the allocation donut and meters are hand-rolled SVG
+  to keep the bundle lean and the aesthetic controlled (design.md named Recharts as optional). Fonts
+  use robust CSS stacks (grotesk + `ui-monospace`) rather than a network font fetch, so the build is
+  offline-safe. CSPR.click owner-signing for live Pause/unpause is deferred to Phase 7 alongside the
+  SSE runner; the Pause control today drives the on-screen kill-switch lock.
+
 ## D-015 — Phase-5 execution arg encoding + open live items — DECIDED (2026-06-22)
 
 - **Status:** DECIDED — 2026-06-22, Phase 5 (execution & proof).

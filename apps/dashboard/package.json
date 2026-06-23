@@ -2,13 +2,24 @@
   "name": "@sentinel/dashboard",
   "version": "0.0.0",
   "private": true,
-  "description": "Dark command-center dashboard (Next.js) — scaffolded in Phase 6, see design.md",
+  "description": "Dark command-center dashboard (Next.js) — perceive→decide→act→prove, per design.md",
   "type": "module",
   "scripts": {
-    "build": "echo \"dashboard: Next.js app scaffolded in Phase 6 (see TODO.md)\"",
-    "test": "echo \"dashboard: no tests yet (Phase 6)\""
+    "dev": "next dev -p 3100",
+    "build": "next build",
+    "start": "next start -p 3100",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"dashboard: presentation surface, no unit tests (see TODO.md Phase 6)\""
   },
   "dependencies": {
-    "@sentinel/shared": "workspace:*"
+    "@sentinel/shared": "workspace:*",
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "typescript": "^5.7.2"
   }
 }

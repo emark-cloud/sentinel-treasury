@@ -11,6 +11,8 @@ node_modules/
 dist/
 .next/
 *.log
+*.tsbuildinfo
+next-env.d.ts
 
 # Rust / Odra
 target/

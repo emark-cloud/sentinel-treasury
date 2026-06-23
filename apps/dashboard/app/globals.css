@@ -1,0 +1,293 @@
+/*
+ * Sentinel Treasury — dark command-center tokens (design.md §4).
+ * Semantic color: green = calm/confirmed, amber = elevated/fallback, coral = stressed/reverted,
+ * info = in-progress/neutral. Two type families: grotesk (human) + mono (every machine value).
+ */
+
+:root {
+  /* Surfaces — near-black page, cards one step lighter, almost-invisible borders. */
+  --bg: #0a0b0d;
+  --bg-glow: #0e1014;
+  --surface: #111317;
+  --surface-2: #15181d;
+  --surface-3: #1b1f26;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+
+  /* Text */
+  --text: #e6e8eb;
+  --text-dim: #9aa0a8;
+  --text-faint: #5c636c;
+
+  /* Semantic accents */
+  --green: #3fb950;
+  --green-dim: rgba(63, 185, 80, 0.14);
+  --green-line: rgba(63, 185, 80, 0.35);
+  --amber: #d29922;
+  --amber-dim: rgba(210, 153, 34, 0.14);
+  --amber-line: rgba(210, 153, 34, 0.35);
+  --coral: #f85149;
+  --coral-dim: rgba(248, 81, 73, 0.14);
+  --coral-line: rgba(248, 81, 73, 0.35);
+  --info: #58a6ff;
+  --info-dim: rgba(88, 166, 255, 0.14);
+  --info-line: rgba(88, 166, 255, 0.35);
+
+  /* Radius */
+  --r-ctl: 8px;
+  --r-card: 14px;
+
+  --font-grotesk:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'JetBrains Mono', 'SF Mono', 'Geist Mono', 'IBM Plex Mono', 'Roboto Mono', Menlo,
+    Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, var(--bg-glow), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, #0c0e12, transparent 55%), var(--bg);
+  color: var(--text);
+  font-family: var(--font-grotesk);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Cards */
+.card {
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 16px;
+}
+
+.card-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.label {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  border: 0;
+  margin: 12px 0;
+}
+
+/* Pills / badges / chips */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.tone-green {
+  color: var(--green);
+  background: var(--green-dim);
+  border-color: var(--green-line);
+}
+.tone-amber {
+  color: var(--amber);
+  background: var(--amber-dim);
+  border-color: var(--amber-line);
+}
+.tone-coral {
+  color: var(--coral);
+  background: var(--coral-dim);
+  border-color: var(--coral-line);
+}
+.tone-info {
+  color: var(--info);
+  background: var(--info-dim);
+  border-color: var(--info-line);
+}
+.tone-neutral {
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-strong);
+}
+
+/* Buttons */
+.btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-ctl);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    opacity 0.12s ease;
+}
+.btn:hover:not(:disabled) {
+  background: #232830;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-danger {
+  color: var(--coral);
+  border-color: var(--coral-line);
+  background: var(--coral-dim);
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(248, 81, 73, 0.22);
+}
+
+/* Hash chip */
+.hashchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  padding: 2px 8px;
+}
+.hashchip a,
+.hashchip button {
+  color: var(--info);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+.hashchip a:hover {
+  text-decoration: underline;
+}
+
+/* Meters */
+.meter {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  display: flex;
+}
+.meter > span {
+  height: 100%;
+  display: block;
+  transition: width 0.5s ease;
+}
+
+/* Motion — only the loop stepper and debate move (design.md §4.4). */
+@keyframes snapIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  60% {
+    transform: translateY(0) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.snap-in {
+  animation: snapIn 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes pulseInfo {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.pulse {
+  animation: pulseInfo 1.1s ease-in-out infinite;
+}
+
+@keyframes ticker {
+  0% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.4;
+  }
+}
+.ticking {
+  animation: ticker 0.9s ease-in-out infinite;
+}
+
+/* Scrollbar */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+a {
+  color: var(--info);
+}

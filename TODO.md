@@ -226,16 +226,33 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 
 ## Phase 6 — Dashboard · apps/dashboard (Next.js, per design.md)
 
-- [ ] Shell: **dark command-center**, three-zone body (state → reasoning → proof), persistent top bar.
-- [ ] **Top bar**: loop stepper (Perceive·Decide·Act·Prove), scenario control (tagged `demo`), **Pause**, `Testnet` tag.
-- [ ] **Left rail**: Allocation panel (target vs actual + drift), Guardrail panel (cap meters, whitelist,
-      key weights, Pause), x402 meter.
-- [ ] **Center (protagonist)**: Debate panel (streaming Scout/Risk/Treasury turns, consensus/fallback badges),
-      Decision card, Action card (live `deploy_hash`, cspr.live link).
-- [ ] **Right rail**: Receipt feed (append-only, newest-on-top, one-click **verify**).
-- [ ] **Live data**: CSPR.cloud **Streaming (SSE)** for receipts/loop/balances; client-side **verify** via
-      `blakejs` + `canonicalize`; `testnet.cspr.live` deep links; **CSPR.click** for owner Pause/unpause signing.
-- [ ] **Motion discipline**: only loop stepper + debate move; `deploy_hash` + receipt badge are punctuation;
+> **Phase-6 status (2026-06-23):** dark command-center built in `apps/dashboard` (Next.js 15 / React 19)
+> — `pnpm typecheck`/`build`/`lint`/`format:check` all clean; `next build` static-renders the page and
+> the dev server serves all 9 panels. The loop choreography (`lib/useLoop.ts`) drives the
+> perceive→decide→act→prove beat with the design.md motion discipline (only the stepper + debate move;
+> `deploy_hash` and the receipt badge snap in). Data comes from a **`CycleSource` seam**
+> (`lib/scenario.ts`) generating complete cycles from the real `@sentinel/shared` shapes + real
+> blake2b hashing, so the receipt **verify** button recomputes genuine perception/decision hashes in
+> the browser (`lib/verify.ts`). Guardrail panel shows the **real** deployed contract hashes, whitelist,
+> key weights and policy. **D-016** records the demo seam + honesty treatment; CSPR.click owner-signing
+> and the live CSPR.cloud SSE runner are deferred to Phase 7 behind the same source interface. No chart
+> dep — the allocation donut + cap meters are hand-rolled SVG/CSS.
+
+- [x] Shell: **dark command-center**, three-zone body (state → reasoning → proof), persistent top bar.
+      (`app/page.tsx` CSS-grid; tokens in `app/globals.css`; responsive primary target = desktop.)
+- [x] **Top bar** (`components/TopBar.tsx`): loop stepper (Perceive·Decide·Act·Prove), scenario control
+      (tagged `demo`, dashed-amber, styled apart), **Pause**, `Testnet` tag.
+- [x] **Left rail**: Allocation panel (donut, target vs actual + drift focal metric), Guardrail panel
+      (Vaulta-style daily cap meter, real whitelist + key weights + policy, owner Pause), x402 meter.
+- [x] **Center (protagonist)**: Debate panel (streaming Scout snapshot → Risk verdict → Treasury propose →
+      Risk approve, consensus/fallback badges), Decision card, Action card (signing steps, live
+      `deploy_hash`, cspr.live link).
+- [x] **Right rail**: Receipt feed (append-only, newest-on-top, one-click **verify** = recompute hashes +
+      cspr.live deep link).
+- [x] **Live data**: client-side **verify** via `@sentinel/shared` (`blakejs` + `canonicalize`);
+      `testnet.cspr.live` deep links. ⏭ CSPR.cloud **Streaming (SSE)** for receipts/loop/balances and
+      **CSPR.click** owner Pause/unpause signing deferred to Phase 7 (live runner) — `CycleSource` seam ready.
+- [x] **Motion discipline**: only loop stepper + debate move; `deploy_hash` + receipt badge are punctuation;
       Pause dims center column. **Semantic color** = regime/result (green calm/confirmed · amber elevated/fallback
       · coral stressed/reverted). Two-family type (grotesk + mono); mono for every machine value.
 
