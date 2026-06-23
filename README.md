@@ -235,34 +235,6 @@ blast radius is bounded at the account level too.
 
 ---
 
-## Demo walkthrough
-
-1. Vault funded on Testnet (sCSPR + WUSDT + CSPR), allocation panel at ~60/40.
-2. Inject a **price-shock** scenario (labelled `demo`) — price drop + widening TWAP/spot divergence.
-3. **Perceive** — Scout pulls Styks + MCP data and makes one x402-paid premium pull (meter ticks).
-4. **Decide** — Risk flags `Stressed`; Treasury proposes ~20/80; Risk approves → consensus.
-5. **Act** — vault `execute_rebalance` swaps sCSPR→WUSDT within caps + slippage bound; live `deploy_hash`.
-6. **Prove** — receipt written; click **verify** → hashes match + cspr.live shows the movement.
-7. Reverse the scenario (**calm**) → agent grows back toward 60/40 → second receipt.
-8. Press **Pause** (owner) → the agent is halted → unpause.
-
-The **3-second beat**: shock → debate → `CONSENSUS` → live `deploy_hash` → green `Receipt #N ✔ on-chain`.
-
----
-
-## Dashboard
-
-A dark "command-center" (Next.js 15 / React 19, dev server on `http://localhost:3100`) that visualizes a
-live cycle: the **allocation** panel (target vs actual sCSPR/stable/CSPR), the **debate** stream (Scout/
-Risk/Treasury turns with a consensus badge or fallback flag), the **decision** card (regime, target bps,
-the concrete action, expected slippage), the **action** card (the `TransactionV1`, live `deploy_hash`, a
-cspr.live link), the **receipt feed** with one-click **verify** (recomputes hashes in-browser), the
-**guardrail** panel (caps used/remaining, whitelist, slippage ceiling, agent-key weights, owner **Pause**),
-and the **x402 meter** (paid pulls, CSPR spent, last settle tx). The top bar carries the loop-stage
-visualizer and the `demo`-tagged scenario controls. Full design language is in `design.md`.
-
----
-
 ## Architecture
 
 ```
@@ -321,13 +293,3 @@ pnpm --filter @sentinel/dashboard build
 Live runs need the credentials in the `CLAUDE.md` config registry (CSPR.cloud token, Gemini key, agent key
 PEM on the execution host). Secrets are env-only and never committed; signing keys never leave the
 execution host.
-
----
-
-## Documents
-
-- [`spec.md`](spec.md) — full technical & architecture spec (data shapes, enforcement flow, demo flow). **Authoritative.**
-- [`design.md`](design.md) — dashboard design (dark command-center, panels, motion + semantic color).
-- [`resources.md`](resources.md) — annotated resources, "values to obtain", top blockers.
-- [`docs/decisions.md`](docs/decisions.md) — the decision log (D-001 … D-017).
-- [`TODO.md`](TODO.md) — the contracts-first build sequence.
