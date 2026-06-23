@@ -260,10 +260,34 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 👤 = user-only (needs
 
 ## Phase 7 — Demo & honesty
 
-- [ ] **Scenario injection** into the perception layer (labelled `demo`): price-shock / liquidity-crunch to trigger a cycle.
-- [ ] Choreograph the **3-second beat** (§15.1): shock → debate → consensus → live `deploy_hash` → `✔ on-chain` receipt.
-- [ ] Reverse scenario (calm) → agent **stakes** back toward 60/40 → second receipt. Demo owner **Pause**/unpause.
-- [ ] **README** with the honesty/status table: only the market event is injected; everything downstream is real on Testnet.
+> **Phase-7 status (2026-06-23):** the honest demo path is wired end-to-end in the orchestrator —
+> typecheck/lint/build/format clean + **104 vitest tests green** (16 new). No new runtime deps.
+> Two pieces landed (D-017): the **scenario harness** (`src/scenario/scenarios.ts`) composes the four
+> existing static perception feeds into four labelled market events — `calm` / `price-shock` /
+> `liquidity-crunch` / `oracle-divergence` — injecting **only** price/depth/curve/vol/premium-index
+> while vault balances + the sCSPR rate stay real; the injected price keeps its `scenario-injection`
+> source so the Scout records TWAP provenance **ESTIMATED**, never VERIFIED. The **top-level loop**
+> (`src/loop.ts` `SentinelLoop`) runs the *real* Scout → oracle guard → DecisionEngine →
+> ExecutionService → CircuitBreaker pipeline; the only difference between a live run and a scenario run
+> is which `PerceptionSources` are injected — that is what makes "everything downstream is real" true.
+> Scenario/guard tension resolved: `price-shock` keeps divergence < the 500bps oracle ceiling and drives
+> Stressed via vol + premium, so the agent still acts; `oracle-divergence` deliberately crosses it to
+> show the guard NoOping a cycle it can't trust. The dashboard already carries the visible choreography
+> (Phase 6): the 3-second beat, the reverse calm→grow scenario, and demo owner Pause/unpause.
+
+- [x] **Scenario injection** into the perception layer (labelled `demo`): price-shock / liquidity-crunch
+      (+ calm + oracle-divergence) to trigger a cycle. `src/scenario/scenarios.ts` (`buildScenario`); the
+      four injectable static feeds composed into a coherent regime, honest `scenario-injection`/ESTIMATED
+      provenance. The `SentinelLoop` (`src/loop.ts`) runs the real pipeline on top of it.
+- [x] Choreograph the **3-second beat** (§15.1): shock → debate → consensus → live `deploy_hash` →
+      `✔ on-chain` receipt. Dashboard `lib/useLoop.ts` motion choreography (Phase 6); the orchestrator
+      `SentinelLoop` produces the real cycle (`CycleResult`) the same beat narrates.
+- [x] Reverse scenario (calm) → agent grows back toward 60/40 → second receipt. Demo owner **Pause**/
+      unpause. Dashboard scenario controls (`calm`/`shock`) + Pause (Phase 6); loop honours `paused` and a
+      tripped circuit breaker (no perception, no tx) — covered by `test/loop.test.ts`.
+- [x] **README** with the honesty/status table: only the market event is injected; everything downstream
+      is real on Testnet. Root `README.md` (status/honesty table + demo walkthrough + run instructions +
+      deployed hashes).
 
 ---
 

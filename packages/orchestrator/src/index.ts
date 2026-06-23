@@ -67,3 +67,9 @@ export * from './proof/receiptCodec.js';
 export * from './proof/receiptReader.js';
 export * from './proof/csprLive.js';
 export * from './proof/verify.js';
+
+// Scenario harness (spec §15.3) — the demo's labelled market-event injection
+export * from './scenario/scenarios.js';
+
+// Top-level perceive→decide→act→prove loop controller (spec §3.1)
+export * from './loop.js';

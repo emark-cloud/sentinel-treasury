@@ -387,3 +387,29 @@ All four open items were exercised against live Testnet (probe scripts in
   (none of value at Phase 3). Deploy txs: AuditLog `bf796d3b…`, vault `a2550fe1…`, set_vault `48a8e9a5…`.
 - **Note:** the agent-account hardening (§4.3) is account-level, not contract-level, so it was unaffected
   by the redeploy — no re-hardening needed.
+
+## D-017 — Phase 7 scenario harness + top-level loop runner — DECIDED (2026-06-23)
+
+- **Context:** Phases 3–5 built every layer behind an injectable seam but nothing tied them into one
+  perceive→decide→act→prove cycle, and the spec §15.3 "scenario injection into the perception layer"
+  existed only as the `StaticPriceFeed` note, not as a composed market event. The dashboard's
+  `lib/scenario.ts` fabricates whole cycles for the UI; that is deliberately *not* the honest path.
+- **Decision:** add `packages/orchestrator/src/scenario/scenarios.ts` (the §15.3 harness) and
+  `src/loop.ts` (`SentinelLoop`). The harness composes the four existing static feeds
+  (`StaticPriceFeed`/`StaticMarketDataProvider`/`StaticExchangeRateFeed`/`StaticBalanceReader`) into
+  four canned market events — `calm` / `price-shock` / `liquidity-crunch` / `oracle-divergence` —
+  injecting **only** price/depth/curve/vol/premium-index; the vault balances + sCSPR rate stay real.
+  The injected price feed keeps its `scenario-injection` source label, so the Scout records TWAP
+  provenance **ESTIMATED**, never VERIFIED — the visible tell that the trigger is simulated.
+  `SentinelLoop.runCycle()` runs the *real* Scout → oracle guard → DecisionEngine → ExecutionService →
+  CircuitBreaker pipeline; the only difference between a live run and a scenario run is which
+  `PerceptionSources` are injected. Everything from the Scout onward is identical — that is what makes
+  the README's "downstream is real" claim true.
+- **Scenario/guard tension (resolved):** a price shock that widens TWAP/spot divergence past the
+  oracle trust ceiling (500bps) would be *rejected* by the staleness guard (correct safety, dead demo).
+  So `price-shock` keeps divergence ≈296bps (< ceiling) and drives the Stressed regime via realized
+  vol + the paid premium index instead; `oracle-divergence` deliberately crosses the ceiling to show
+  the guard NoOping a cycle it cannot trust. Both behaviours are covered by `test/loop.test.ts`.
+- **Tests:** `test/scenario.test.ts` (8) + `test/loop.test.ts` (8) → 104 vitest green. Loop tests use
+  an empty `ScriptedLlmClient` so every agent turn falls back to the deterministic rule engine — the
+  end-to-end wiring is exercised with zero network and zero LLM nondeterminism.
