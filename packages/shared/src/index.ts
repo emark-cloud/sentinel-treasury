@@ -8,6 +8,7 @@
  * is what makes the AuditLog verifiable.
  */
 export * from './types/onchain.js';
+export * from './position.js';
 export * from './types/provenance.js';
 export * from './types/market.js';
 export * from './types/decision.js';

@@ -69,11 +69,13 @@ pub enum Error {
     NotInitialized = 12,
     /// Withdrawal/transfer amount exceeds available balance.
     InsufficientBalance = 13,
+    /// Redeem amount exceeds the caller's share balance (or supply is empty).
+    InsufficientShares = 14,
 }
 
 #[odra::module(
     errors = Error,
-    events = [RebalanceExecuted, PolicyUpdated, PausedSet, Deposited, Withdrawn]
+    events = [RebalanceExecuted, PolicyUpdated, PausedSet, Deposited, Withdrawn, Redeemed]
 )]
 pub struct SentinelVault {
     // identity / control
@@ -94,6 +96,12 @@ pub struct SentinelVault {
     // accounting / wiring
     audit_log: Var<Address>,
     action_nonce: Var<u64>,
+
+    // share accounting (ERC-4626-style): shares track each depositor's pro-rata claim on NAV.
+    // Minting/burning happen on deposit/redeem — *not* on the agent's rebalance — so they sit
+    // outside the guardrail gate in `execute_rebalance` and never touch the USD caps.
+    shares_supply: Var<U256>,
+    share_balances: Mapping<Address, U256>,
 
     // protocol + asset addresses (Mode A targets; sCSPR token == Wise staking package)
     styks: Var<Address>,
@@ -126,8 +134,14 @@ pub struct PausedSet {
 
 #[odra::event]
 pub struct Deposited {
+    /// Account that funded the vault and received the minted shares.
+    pub depositor: Address,
+    /// `None` ⇒ native CSPR; otherwise the CEP-18 token deposited.
     pub token: Option<Address>,
+    /// Base-unit amount deposited.
     pub amount: U256,
+    /// Shares minted to the depositor for this deposit (the off-chain position index sums these).
+    pub shares_minted: U256,
 }
 
 #[odra::event]
@@ -135,6 +149,17 @@ pub struct Withdrawn {
     pub token: Option<Address>,
     pub amount: U256,
     pub to: Address,
+}
+
+#[odra::event]
+pub struct Redeemed {
+    /// Account that burned shares and received the in-kind payout.
+    pub redeemer: Address,
+    pub shares_burned: U256,
+    /// Pro-rata payout legs (native CSPR + the two managed tokens).
+    pub cspr_out: U256,
+    pub scspr_out: U256,
+    pub csprusd_out: U256,
 }
 
 #[odra::module]
@@ -161,6 +186,7 @@ impl SentinelVault {
         self.audit_log.set(audit_log);
         self.paused.set(false);
         self.action_nonce.set(0);
+        self.shares_supply.set(U256::zero());
         self.day_spent_usd.set(U256::zero());
         self.day_epoch.set(self.current_epoch());
         self.write_policy(cfg);
@@ -174,25 +200,94 @@ impl SentinelVault {
         self.whitelist.set(&scspr, true);
     }
 
-    /// Receive native CSPR into the vault purse.
+    /// Receive native CSPR into the vault purse and mint shares pro-rata to current NAV. The
+    /// purse is already credited when this runs, so NAV is read *after* and the deposit value
+    /// is backed out to price the mint against the pre-deposit pool (spec §4 / depositor flow).
     #[odra(payable)]
     pub fn deposit_cspr(&mut self) {
-        let amount = self.env().attached_value();
+        let depositor = self.env().caller();
+        let amount = self.env().attached_value().to_u256().unwrap_or_default();
+        let twap = self.read_twap();
+        let deposit_usd = self.cspr_to_usd(amount, twap);
+        let total_before = self.total_nav_usd(twap).saturating_sub(deposit_usd);
+        let minted = self.shares_to_mint(deposit_usd, total_before);
+        self.mint_shares(depositor, minted);
         self.env().emit_event(Deposited {
+            depositor,
             token: None,
-            amount: amount.to_u256().unwrap_or_default(),
+            amount,
+            shares_minted: minted,
         });
     }
 
-    /// Pull `amount` of a CEP-18 token into the vault (depositor must have approved the vault).
+    /// Pull `amount` of a managed CEP-18 token into the vault (depositor must have approved the
+    /// vault) and mint shares pro-rata to NAV. Only the two managed assets (sCSPR, stable) are
+    /// accepted — anything else has no defined NAV contribution and reverts.
     pub fn deposit_token(&mut self, token: Address, amount: U256) {
         let depositor = self.env().caller();
+        let asset = if token == self.scspr_addr() {
+            Asset::Scspr
+        } else if token == self.wusdt_addr() {
+            Asset::Csprusd
+        } else {
+            self.env().revert(Error::InvalidAction)
+        };
         let me = self.env().self_address();
-        // The vault was approved by the depositor; move the tokens in.
+        // The vault was approved by the depositor; move the tokens in (purse credited before NAV).
         Cep18ContractRef::new(self.env(), token).transfer_from(depositor, me, amount);
+        let twap = self.read_twap();
+        let deposit_usd = self.to_usd_micros(&asset, amount, twap);
+        let total_before = self.total_nav_usd(twap).saturating_sub(deposit_usd);
+        let minted = self.shares_to_mint(deposit_usd, total_before);
+        self.mint_shares(depositor, minted);
         self.env().emit_event(Deposited {
+            depositor,
             token: Some(token),
             amount,
+            shares_minted: minted,
+        });
+    }
+
+    /// User-initiated, in-kind pro-rata redemption: burn `shares_amount` and pay out the caller's
+    /// proportional slice of *each* of the three buckets. This deliberately does **no** swap and
+    /// **no** unstake at the contract level — the redeemer receives sCSPR tokens directly and may
+    /// hold them, unstake (≈16h unbonding), or sell on the DEX (instant, slippage). That keeps the
+    /// "speed → DEX, finality → unstake" choice with the user and avoids slippage/oracle risk on
+    /// the exit path. Shares are burned before any transfer (checks-effects-interactions).
+    pub fn redeem(&mut self, shares_amount: U256) {
+        let redeemer = self.env().caller();
+        let supply = self.shares_supply.get_or_default();
+        if supply.is_zero() || shares_amount.is_zero() {
+            self.env().revert(Error::InvalidAction);
+        }
+        let bal = self.share_balances.get(&redeemer).unwrap_or_default();
+        if shares_amount > bal {
+            self.env().revert(Error::InsufficientShares);
+        }
+
+        // Pro-rata slices against the *current* supply, before the burn.
+        let cspr_out = self.env().self_balance() * shares_amount.to_u512() / supply.to_u512();
+        let scspr_out = self.token_balance(self.scspr_addr()) * shares_amount / supply;
+        let wusdt_out = self.token_balance(self.wusdt_addr()) * shares_amount / supply;
+
+        self.burn_shares(redeemer, shares_amount);
+
+        if !cspr_out.is_zero() {
+            self.env().transfer_tokens(&redeemer, &cspr_out);
+        }
+        if !scspr_out.is_zero() {
+            Cep18ContractRef::new(self.env(), self.scspr_addr()).transfer(redeemer, scspr_out);
+        }
+        if !wusdt_out.is_zero() {
+            Cep18ContractRef::new(self.env(), self.wusdt_addr()).transfer(redeemer, wusdt_out);
+        }
+
+        self.env().emit_event(Redeemed {
+            redeemer,
+            shares_burned: shares_amount,
+            cspr_out: cspr_out.to_u256().unwrap_or_default(),
+            scspr_out,
+            csprusd_out: wusdt_out,
         });
     }
 
@@ -249,6 +344,31 @@ impl SentinelVault {
             scspr: self.token_balance(self.scspr_addr()),
             csprusd: self.token_balance(self.wusdt_addr()),
         }
+    }
+
+    /// Total shares outstanding (the redemption denominator).
+    pub fn total_shares(&self) -> U256 {
+        self.shares_supply.get_or_default()
+    }
+
+    /// Shares held by `account` — its pro-rata claim on the vault's NAV.
+    pub fn shares_of(&self, account: Address) -> U256 {
+        self.share_balances.get(&account).unwrap_or_default()
+    }
+
+    /// Total USD value (micro-USD) of all three buckets at the live Styks TWAP.
+    pub fn nav_usd(&self) -> U256 {
+        self.total_nav_usd(self.read_twap())
+    }
+
+    /// Convenience: the micro-USD value of `account`'s position at the current NAV.
+    pub fn position_value_usd(&self, account: Address) -> U256 {
+        let supply = self.shares_supply.get_or_default();
+        if supply.is_zero() {
+            return U256::zero();
+        }
+        let shares = self.share_balances.get(&account).unwrap_or_default();
+        self.total_nav_usd(self.read_twap()) * shares / supply
     }
 
     /// The active guardrail policy.
@@ -471,8 +591,9 @@ impl SentinelVault {
         cspr_amount * U256::from(twap) / divisor
     }
 
-    /// USD-normalized allocation over the three buckets, summing to 10000 bps.
-    fn compute_alloc(&self, twap: u64) -> AllocationBps {
+    /// Micro-USD value of each bucket `(scspr, csprusd, cspr)` at the given TWAP. Single source
+    /// of truth for both the allocation view and NAV/share accounting (no valuation drift).
+    fn bucket_usd(&self, twap: u64) -> (U256, U256, U256) {
         let scspr_bal = self.token_balance(self.scspr_addr());
         let wusdt_bal = self.token_balance(self.wusdt_addr());
         let cspr_bal = self.env().self_balance().to_u256().unwrap_or_default();
@@ -480,6 +601,50 @@ impl SentinelVault {
         let scspr_usd = self.to_usd_micros(&Asset::Scspr, scspr_bal, twap);
         let csprusd_usd = wusdt_bal; // stable, already micro-USD
         let cspr_usd = self.cspr_to_usd(cspr_bal, twap);
+        (scspr_usd, csprusd_usd, cspr_usd)
+    }
+
+    /// Total NAV (micro-USD) across the three buckets — the share-price denominator.
+    fn total_nav_usd(&self, twap: u64) -> U256 {
+        let (scspr_usd, csprusd_usd, cspr_usd) = self.bucket_usd(twap);
+        scspr_usd + csprusd_usd + cspr_usd
+    }
+
+    /// Shares to mint for a `deposit_usd` contribution against a pool worth `total_before`.
+    /// First deposit (empty supply or empty pool) mints 1 share per micro-USD; thereafter the
+    /// mint is diluted by the live NAV so every depositor's share price is consistent.
+    fn shares_to_mint(&self, deposit_usd: U256, total_before: U256) -> U256 {
+        let supply = self.shares_supply.get_or_default();
+        if supply.is_zero() || total_before.is_zero() {
+            deposit_usd
+        } else {
+            deposit_usd * supply / total_before
+        }
+    }
+
+    fn mint_shares(&mut self, to: Address, amount: U256) {
+        if amount.is_zero() {
+            return;
+        }
+        let b = self.share_balances.get(&to).unwrap_or_default();
+        self.share_balances.set(&to, b + amount);
+        self.shares_supply
+            .set(self.shares_supply.get_or_default() + amount);
+    }
+
+    fn burn_shares(&mut self, from: Address, amount: U256) {
+        let b = self.share_balances.get(&from).unwrap_or_default();
+        if amount > b {
+            self.env().revert(Error::InsufficientShares);
+        }
+        self.share_balances.set(&from, b - amount);
+        self.shares_supply
+            .set(self.shares_supply.get_or_default().saturating_sub(amount));
+    }
+
+    /// USD-normalized allocation over the three buckets, summing to 10000 bps.
+    fn compute_alloc(&self, twap: u64) -> AllocationBps {
+        let (scspr_usd, csprusd_usd, cspr_usd) = self.bucket_usd(twap);
         let total = scspr_usd + csprusd_usd + cspr_usd;
 
         if total.is_zero() {

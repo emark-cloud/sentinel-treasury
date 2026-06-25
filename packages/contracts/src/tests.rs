@@ -402,6 +402,76 @@ fn set_policy_is_owner_only() {
     );
 }
 
+// ------------------------------------------------------------------ shares (depositor flow)
+
+#[test]
+fn first_deposit_mints_shares_one_to_one_with_usd() {
+    let f = setup();
+    // setup() deposited 1000 CSPR (≈ $20 at TWAP) as the owner → 20e6 shares (1 per micro-USD).
+    assert_eq!(f.vault.total_shares(), usd(20));
+    assert_eq!(f.vault.shares_of(f.owner), usd(20));
+    assert_eq!(f.vault.position_value_usd(f.owner), usd(20));
+}
+
+#[test]
+fn second_depositor_shares_track_nav() {
+    let f = setup();
+    let vault = f.vault;
+    let mut wusdt = f.wusdt;
+    // Simulate yield: NAV doubles to $40 against the same 20e6 shares outstanding.
+    wusdt.mint(vault.address(), usd(20));
+    // Outsider deposits 1000 CSPR (≈ $20) into a $40 pool → 10e6 shares (half the first rate).
+    f.env.set_caller(f.outsider);
+    vault.with_tokens(cspr512(1_000)).deposit_cspr();
+    assert_eq!(vault.shares_of(f.outsider), usd(10));
+    assert_eq!(vault.total_shares(), usd(30));
+}
+
+#[test]
+fn redeem_pays_in_kind_pro_rata() {
+    let f = setup();
+    let mut vault = f.vault;
+    let mut staking = f.staking;
+    let mut wusdt = f.wusdt;
+    // Multi-asset book: 1000 CSPR (from setup) + 200 sCSPR + 8 WUSDT; owner is the sole holder.
+    staking.mint(vault.address(), cspr256(200));
+    wusdt.mint(vault.address(), usd(8));
+
+    f.env.set_caller(f.owner);
+    vault.redeem(usd(10)); // burn half the shares → 50% of every bucket
+
+    assert_eq!(vault.total_shares(), usd(10));
+    assert_eq!(vault.shares_of(f.owner), usd(10));
+    // Vault keeps the other half of each bucket.
+    assert_eq!(vault.balances().cspr, cspr512(500));
+    assert_eq!(staking.balance_of(vault.address()), cspr256(100));
+    assert_eq!(wusdt.balance_of(vault.address()), usd(4));
+    // Redeemer received the in-kind token slices.
+    assert_eq!(staking.balance_of(f.owner), cspr256(100));
+    assert_eq!(wusdt.balance_of(f.owner), usd(4));
+}
+
+#[test]
+fn redeem_rejects_insufficient_shares() {
+    let f = setup();
+    let mut vault = f.vault;
+    f.env.set_caller(f.outsider); // holds no shares
+    assert_eq!(
+        vault.try_redeem(usd(1)),
+        Err(VaultError::InsufficientShares.into())
+    );
+}
+
+#[test]
+fn deposits_do_not_consume_the_daily_cap() {
+    let f = setup();
+    let vault = f.vault;
+    // A large deposit does not touch the USD spend caps — those gate the agent's action only.
+    f.env.set_caller(f.outsider);
+    vault.with_tokens(cspr512(2_000)).deposit_cspr();
+    assert_eq!(vault.day_remaining_usd(), usd(20)); // full daily cap still available
+}
+
 // ------------------------------------------------------------------ helpers
 
 fn sample_receipt(addr: Address) -> Receipt {

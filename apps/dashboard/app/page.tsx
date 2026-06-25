@@ -3,18 +3,26 @@
  * Three-zone body: state (left) → reasoning→action (center, protagonist) → proof (right).
  */
 'use client';
+import { useState } from 'react';
 import { useLoop } from '../lib/useLoop';
+import { useWallet } from '../lib/wallet';
+import { useDepositor } from '../lib/depositor';
 import { TopBar } from '../components/TopBar';
 import { AllocationPanel } from '../components/panels/Allocation';
+import { PositionPanel } from '../components/panels/Position';
 import { GuardrailPanel } from '../components/panels/Guardrail';
 import { X402Meter } from '../components/panels/X402Meter';
 import { DebatePanel } from '../components/panels/Debate';
 import { DecisionCard } from '../components/panels/Decision';
 import { ActionCard } from '../components/panels/Action';
 import { ReceiptFeed } from '../components/panels/ReceiptFeed';
+import { DepositModal, WithdrawModal } from '../components/DepositWithdraw';
 
 export default function Page() {
   const loop = useLoop();
+  const wallet = useWallet();
+  const depositor = useDepositor(wallet);
+  const [modal, setModal] = useState<'deposit' | 'withdraw' | null>(null);
   const x402Active = loop.stage === 'perceive';
 
   return (
@@ -29,7 +37,7 @@ export default function Page() {
         padding: '0 14px 14px',
       }}
     >
-      <TopBar loop={loop} />
+      <TopBar loop={loop} wallet={wallet} />
 
       {/* Left rail — state & trust (quiet, slow-changing). */}
       <div
@@ -42,6 +50,18 @@ export default function Page() {
           paddingTop: 14,
         }}
       >
+        <PositionPanel
+          wallet={wallet}
+          depositor={depositor}
+          onDeposit={() => {
+            depositor.resetTx();
+            setModal('deposit');
+          }}
+          onWithdraw={() => {
+            depositor.resetTx();
+            setModal('withdraw');
+          }}
+        />
         <AllocationPanel alloc={loop.alloc} targetBps={loop.targetBps} />
         <GuardrailPanel
           daySpentUsd={loop.daySpentUsd}
@@ -110,6 +130,13 @@ export default function Page() {
       >
         <ReceiptFeed history={loop.history} freshId={loop.freshReceiptId} />
       </div>
+
+      {modal === 'deposit' && (
+        <DepositModal wallet={wallet} depositor={depositor} onClose={() => setModal(null)} />
+      )}
+      {modal === 'withdraw' && (
+        <WithdrawModal wallet={wallet} depositor={depositor} onClose={() => setModal(null)} />
+      )}
     </div>
   );
 }

@@ -35,6 +35,9 @@ fn env_contract(key: &str) -> Address {
 }
 
 fn main() {
+    // Surface the real RPC/deploy error (odra's livenet env logs it via `log::error!` then masks
+    // it as a generic ContractDeploymentError). Default to `info` so the node's rejection shows.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let env = odra_casper_livenet_env::env();
 
     let owner = env.caller();

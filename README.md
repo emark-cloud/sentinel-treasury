@@ -231,6 +231,7 @@ blast radius is bounded at the account level too.
 | `execute_rebalance` transaction | 🟢 **Real on Testnet** | `TransactionV1` signed by the bounded agent key; finalized; live `deploy_hash`. |
 | On-chain caps / whitelist / allocation bounds | 🟢 **Real, enforced in WASM** | Enforced below the agent's reach; a fully compromised agent brain still cannot breach them. |
 | Receipt + AuditLog entry | 🟢 **Real on Testnet** | Written cross-contract atomically by the vault; append-only; hash-verifiable. |
+| Depositor flow (connect → deposit → see position → withdraw) | 🟢 **Real when configured** / 🟡 demo otherwise | The vault is an ERC-4626-style share-issuing vault: `deposit_cspr`/`deposit_token` mint shares pro-rata to NAV; user-initiated `redeem` burns shares and pays out the depositor's in-kind slice of every bucket. With a Casper Wallet connection + CSPR.cloud configured, balances/shares are read live and deposit/redeem submit real `TransactionV1`s; with no wallet/backend the same UX runs against an in-memory vault tagged `demo` (mirrors the market-event seam). NAV/position math (`@sentinel/shared` `position.ts`) is the exact valuation the contract performs, so the value shown equals what a redeem pays. |
 | Dashboard cycle data | 🟡 **Demo seam** | `apps/dashboard/lib/scenario.ts` generates cycles from the **real** `@sentinel/shared` shapes + real blake2b hashing, so the receipt **verify** button recomputes genuine hashes in the browser. Live CSPR.cloud SSE + CSPR.click owner-signing drop in behind the same `CycleSource` interface. |
 
 ---

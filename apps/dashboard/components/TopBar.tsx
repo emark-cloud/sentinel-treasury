@@ -2,6 +2,32 @@
 'use client';
 import { LOOP_STAGES, type LoopStage } from '../lib/types';
 import type { LoopApi } from '../lib/useLoop';
+import type { WalletApi } from '../lib/wallet';
+import { truncHash } from '../lib/format';
+
+function WalletChip({ wallet }: { wallet: WalletApi }) {
+  if (!wallet.connected) {
+    return (
+      <button className="btn" onClick={wallet.connect} disabled={wallet.connecting} title="Connect a Casper wallet">
+        {wallet.connecting ? 'Connecting…' : '⊕ Connect Wallet'}
+      </button>
+    );
+  }
+  return (
+    <span
+      style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+      title={wallet.isReal ? 'Casper Wallet connected' : 'Demo account (no chain activity)'}
+    >
+      <span className={`pill ${wallet.isReal ? 'tone-green' : 'tone-amber'}`} style={{ fontFamily: 'var(--font-mono)' }}>
+        {wallet.isReal ? '' : 'demo '}
+        {truncHash(wallet.activeKey ?? '')}
+      </span>
+      <button className="btn" onClick={wallet.disconnect} title="Disconnect" style={{ padding: '4px 8px' }}>
+        ⏻
+      </button>
+    </span>
+  );
+}
 
 const STAGE_LABEL: Record<(typeof LOOP_STAGES)[number], string> = {
   perceive: 'Perceive',
@@ -60,7 +86,7 @@ function LoopStepper({ stage }: { stage: LoopStage }) {
   );
 }
 
-export function TopBar({ loop }: { loop: LoopApi }) {
+export function TopBar({ loop, wallet }: { loop: LoopApi; wallet: WalletApi }) {
   const { stage, running, paused, inject, togglePause } = loop;
   const busy = running || paused;
   return (
@@ -127,6 +153,8 @@ export function TopBar({ loop }: { loop: LoopApi }) {
         >
           {paused ? '▶ Unpause' : '⏸ Pause'}
         </button>
+
+        <WalletChip wallet={wallet} />
 
         <span className="pill tone-info" style={{ fontFamily: 'var(--font-mono)' }}>
           Testnet

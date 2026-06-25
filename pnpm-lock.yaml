@@ -35,6 +35,9 @@ importers:
       '@sentinel/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      casper-js-sdk:
+        specifier: 5.0.12
+        version: 5.0.12
       next:
         specifier: ^15.1.6
         version: 15.5.19(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

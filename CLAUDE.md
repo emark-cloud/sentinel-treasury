@@ -148,12 +148,20 @@ pnpm --filter @sentinel/dashboard typecheck
 Values to obtain (none are public URLs; source via protocol Testnet UIs, cspr.live, docs/Discords, mentors):
 
 ```
-# Our deployed contracts (UPGRADABLE redeploy, casper-test, 2026-06-22 — package hashes; D-013)
-# Unlocked packages carrying the STYKS_TWAP_DECIMALS=5 scale fix. The original Phase-2 deploy was
-# installed Locked (is_upgradable=false), so the fix could not be pushed as an in-place upgrade —
-# redeployed both as upgradable; existing AuditLog entries were discarded.
-VAULT_CONTRACT_HASH=949a9c359d12bf02a9f630c8eaeb1459348da6880e563d4ac278077a2f446f20     # deploy tx a2550fe1…; init owner/agent + conservative demo policy
-AUDITLOG_CONTRACT_HASH=95dd52c4fc07bb42ce8648f2cf74a8839244410de31b68045b96cb95cf004712  # deploy tx bf796d3b…; set_vault tx 48a8e9a5… binds vault as writer
+# Our deployed contracts (UPGRADABLE share-vault redeploy, casper-test, 2026-06-25 — package hashes; D-014)
+# ERC-4626-style share-issuing vault: deposit_cspr/deposit_token mint shares pro-rata to NAV; user-
+# initiated redeem() burns shares and pays out in-kind; views total_shares/shares_of/nav_usd;
+# Deposited/Redeemed events carry the depositor + share delta. Fresh upgradable deploy (added storage).
+# Deployed via casper-js-sdk (packages/orchestrator/scripts/deploy-sharevault*.cjs) rather than odra's
+# livenet backend — odra 2.8.1 pins casper-client 5.0.0 whose tx format the upgraded testnet node
+# (protocol 2.2.2) rejects ("invalid pricing mode"); casper-js-sdk 5.0.12 speaks the current format.
+# The AuditLog install succeeded but the SDK's waitForTransaction threw mid-run; deploy-sharevault-
+# resume.cjs picked up from the vault install (raw info_get_transaction polling instead of the SDK wait).
+VAULT_CONTRACT_HASH=513a28a4846d5c18ac354ff0483b45185780bf6e46f670ce19e926d10f059aa7     # deploy tx 664e963a…; init owner/agent + $50/$200 caps, 1% slip, 15–70% sCSPR band
+AUDITLOG_CONTRACT_HASH=a1a2080d4079b81fd87a51218335d45426e7cd6f6491ccbdfe7a40911a15efdc  # deploy tx a597c982…; set_vault tx 2d784e1b… binds vault as writer
+# Superseded D-013 deploy (pre-share-vault, casper-test, 2026-06-22):
+#   VAULT_CONTRACT_HASH=949a9c359d12bf02a9f630c8eaeb1459348da6880e563d4ac278077a2f446f20  # deploy tx a2550fe1…
+#   AUDITLOG_CONTRACT_HASH=95dd52c4fc07bb42ce8648f2cf74a8839244410de31b68045b96cb95cf004712  # deploy tx bf796d3b…
 # Superseded (Locked / mis-scaled, abandoned 2026-06-22):
 #   VAULT_CONTRACT_HASH=b44ac9cc720e30f0568c74612e984fc27b262dc7ea4ca4b0e1fa664ff3068f95
 #   AUDITLOG_CONTRACT_HASH=3f0d61e2e1895f7810e59ffa168749058ac981bd5fa18a887a2eecdbc3d982db
@@ -178,6 +186,16 @@ GEMINI_API_KEY=             # Google AI Studio; GEMINI_MODEL=gemini-2.5-flash
 X402_FACILITATOR_URL=https://x402-facilitator.cspr.cloud
 CSPR_TRADE_MCP_ENDPOINT=
 PREMIUM_ENDPOINT_URL=        # we run both ends; + price
+
+# Dashboard depositor flow (apps/dashboard). Live reads need the CSPR.cloud token (server-side only,
+# via the /api/vault + /api/position routes) + VAULT_ENTITY_HASH; absent these the dashboard runs the
+# depositor UX against an in-memory demo vault (tagged `demo`). The browser submits signed deposit/
+# redeem TransactionV1s to NEXT_PUBLIC_NODE_RPC_URL (public node, no token).
+VAULT_ENTITY_HASH=513a28a4846d5c18ac354ff0483b45185780bf6e46f670ce19e926d10f059aa7   # vault package hash (D-014) — CSPR.cloud keys the vault's holdings by this
+NEXT_PUBLIC_NODE_RPC_URL=https://node.testnet.casper.network/rpc
+DASHBOARD_TWAP_MICROS=30700              # display CSPR/USD (micro-USD); on-chain Styks read is authoritative
+DASHBOARD_SCSPR_STAKED=1052              # sCSPR rate numerator   (staked_cspr)  — display only
+DASHBOARD_SCSPR_SUPPLY=1000              # sCSPR rate denominator (total_supply) — display only
 ```
 
 ## Top blockers to resolve first (resources.md)

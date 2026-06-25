@@ -7,9 +7,23 @@ import type { PolicyConfig } from '@sentinel/shared';
 
 export const NETWORK = 'casper-test';
 
+/** Public node RPC the browser submits signed deposit/redeem transactions to (no token needed). */
+export const NODE_RPC_URL =
+  process.env.NEXT_PUBLIC_NODE_RPC_URL ?? 'https://node.testnet.casper.network/rpc';
+
+/** The vault's share token ticker (ERC-4626-style: 1 share ≈ 1 micro-USD at genesis). */
+export const SHARE_SYMBOL = 'stVLT';
+
+/** Gas (motes) for the depositor-facing entry points. CSPR deposit/redeem are simple calls. */
+export const GAS = {
+  deposit: 3_500_000_000, // 3.5 CSPR
+  approve: 1_500_000_000, // 1.5 CSPR
+  redeem: 5_000_000_000, // 5 CSPR (three in-kind transfer legs)
+} as const;
+
 export const CONTRACTS = {
-  vault: '949a9c359d12bf02a9f630c8eaeb1459348da6880e563d4ac278077a2f446f20',
-  auditLog: '95dd52c4fc07bb42ce8648f2cf74a8839244410de31b68045b96cb95cf004712',
+  vault: '513a28a4846d5c18ac354ff0483b45185780bf6e46f670ce19e926d10f059aa7',
+  auditLog: 'a1a2080d4079b81fd87a51218335d45426e7cd6f6491ccbdfe7a40911a15efdc',
   styks: '2879d6e927289197aab0101cc033f532fe22e4ab4686e44b5743cb1333031acc',
   router: '04a11a367e708c52557930c4e9c1301f4465100d1b1b6d0a62b48d3e32402867',
   staking: 'baa50d1500aa5361c497c06b40f2822ebb0b5fce5b1c3a037ea628cb68d920f3',
