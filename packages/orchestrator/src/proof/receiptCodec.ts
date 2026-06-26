@@ -34,6 +34,7 @@ export function parseReceipt(bytes: Uint8Array): Receipt {
   const actionId = r.u64().toString();
   const timestamp = r.u64().toString();
   const agent = r.address().hex;
+  const account = r.address().hex;
   const actionKind = ACTION_KINDS[r.u8()]!;
   const regime = REGIMES[r.u8()]!;
   const perceptionHash = r.bytes32Hex();
@@ -50,6 +51,7 @@ export function parseReceipt(bytes: Uint8Array): Receipt {
     actionId,
     timestamp,
     agent,
+    account,
     actionKind,
     regime,
     perceptionHash,
@@ -70,9 +72,11 @@ export function encodeReceipt(
   receipt: Receipt,
   agentIsContract = false,
   targetIsContract = true,
+  accountIsContract = false,
 ): Uint8Array {
   const w = new ByteWriter().u64(BigInt(receipt.actionId)).u64(BigInt(receipt.timestamp));
-  (agentIsContract ? w.contractAddress(receipt.agent) : w.accountAddress(receipt.agent))
+  agentIsContract ? w.contractAddress(receipt.agent) : w.accountAddress(receipt.agent);
+  (accountIsContract ? w.contractAddress(receipt.account) : w.accountAddress(receipt.account))
     .u8(indexOf(ACTION_KINDS, receipt.actionKind, 'ActionKind'))
     .u8(indexOf(REGIMES, receipt.regime, 'Regime'))
     .bytes32(receipt.perceptionHash)

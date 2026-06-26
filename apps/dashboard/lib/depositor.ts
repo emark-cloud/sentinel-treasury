@@ -1,30 +1,30 @@
 /**
- * Depositor state — "get my funds in, see my balance and where it's allocated."
+ * Depositor state — "get my funds in, see my own balance and where it's allocated."
  *
- * Backed by the same share math the contract uses (`@sentinel/shared` `position.ts`), so the demo
- * mirrors on-chain behaviour exactly: deposits mint shares pro-rata to NAV, redeems burn shares and
- * pay out the depositor's in-kind slice of every bucket.
+ * Multi-tenant vault: each depositor owns an explicit ledger slice (their own cspr/scspr/csprusd),
+ * not pooled shares. The demo mirrors the on-chain behaviour exactly — a deposit lands as *your
+ * own* CSPR, a withdraw pays your own balance back in-kind, and a full redeem empties your slice.
+ * Valuation reuses `@sentinel/shared` (`position.ts`) so the $ value shown equals the contract's
+ * `account_value_usd`.
  *
  * Two modes behind one hook (mirrors the loop's ScenarioSource seam, spec §15.3):
- *  - **live** (real wallet + configured backend): balances/shares are read from `/api/*`
- *    (CSPR.cloud + the vault event stream) and deposit/redeem submit a real `TransactionV1`.
- *  - **demo** (default / no extension): an in-memory vault so the full onboarding flow is
- *    exercisable on stage. Demo state is clearly tagged in the UI.
+ *  - **live** (real wallet + configured backend): aggregate TVL + this account's slice from `/api/*`,
+ *    and deposit/withdraw/redeem submit a real `TransactionV1`.
+ *  - **demo** (default / no extension): an in-memory multi-tenant vault so the full onboarding flow
+ *    is exercisable on stage. Demo state is clearly tagged in the UI.
  */
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  bucketUsd,
   computeNavSnapshot,
   computeUserPosition,
-  sharesForDeposit,
   type NavSnapshot,
   type UserPosition,
   type VaultBalances,
 } from '@sentinel/shared';
 import type { WalletApi } from './wallet';
 import { fetchVault, fetchPosition, type VaultApiResponse } from './casper/reads';
-import { submitDeposit, submitRedeem } from './casper/tx';
+import { submitDeposit, submitWithdraw, submitRedeem } from './casper/tx';
 
 const CSPR = 1_000_000_000n; // motes per CSPR
 const USD = 1_000_000n; // micro-USD per $1
@@ -33,6 +33,9 @@ const USD = 1_000_000n; // micro-USD per $1
 const DEMO_TWAP_MICROS = 30_700n; // $0.0307 / CSPR
 const DEMO_RATE = { stakedCspr: 1052n, totalSupply: 1000n }; // 1.052 CSPR per sCSPR
 
+/** The three managed assets a withdraw can target. */
+export type WithdrawAsset = 'CSPR' | 'sCSPR' | 'csprUSD';
+
 export type TxPhase = 'idle' | 'building' | 'signing' | 'submitted' | 'finalized' | 'error';
 export interface TxState {
   phase: TxPhase;
@@ -40,112 +43,99 @@ export interface TxState {
   error: string | null;
 }
 
-export interface InKindPayout {
-  cspr: string;
-  scspr: string;
-  csprusd: string;
-}
-
 export interface DepositorApi {
   live: boolean;
+  /** Aggregate vault TVL (all accounts). */
   vault: NavSnapshot;
+  /** The connected account's own ledger slice + valuation, or null when disconnected/empty. */
   position: UserPosition | null;
   tx: TxState;
-  /** Preview shares minted + % of pool for a prospective CSPR deposit (no state change). */
-  previewDeposit: (amountCspr: number) => { shares: string; pctOfPoolBps: number };
-  /** Preview the in-kind payout for redeeming `shares`. */
-  previewRedeem: (shares: string) => InKindPayout;
+  /** Preview the micro-USD value a prospective CSPR deposit credits to your position. */
+  previewDeposit: (amountCspr: number) => { valueUsdMicros: string };
   deposit: (amountCspr: number) => Promise<void>;
-  redeem: (shares: string) => Promise<void>;
+  /** Withdraw `amountBase` (base units) of one asset from your own ledger slice. */
+  withdraw: (asset: WithdrawAsset, amountBase: string) => Promise<void>;
+  /** Full exit: pay out your entire in-kind slice and zero your ledger. */
+  redeem: () => Promise<void>;
   refresh: () => void;
-  /** Clear the tx stepper back to idle (called when (re)opening a flow). */
   resetTx: () => void;
+}
+
+interface Ledger {
+  cspr: bigint;
+  scspr: bigint;
+  csprusd: bigint;
 }
 
 // ----------------------------------------------------------------- in-memory demo vault
 
 class DemoVault {
-  balances: { cspr: bigint; scspr: bigint; csprusd: bigint };
-  supply: bigint;
-  shares = new Map<string, bigint>();
+  private ledgers = new Map<string, Ledger>();
 
   constructor() {
-    // Seed a healthy calm book: ~$6k sCSPR / ~$4k stable / 75 CSPR buffer, all owned by a
-    // synthetic genesis treasury so a freshly-connected user starts at 0% and grows by depositing.
-    this.balances = {
+    // Seed a synthetic genesis treasury so aggregate TVL is non-trivial and a freshly-connected
+    // user starts at 0 and grows by depositing into their *own* slice.
+    this.ledgers.set('genesis-treasury', {
       scspr: 185_773n * CSPR, // ≈ $6,000 at the demo rate/price
       csprusd: 4_000n * USD, // $4,000 stable
       cspr: 75n * CSPR, // working buffer
-    };
-    const navMicros = this.navUsd();
-    this.supply = navMicros; // genesis: 1 share per micro-USD ⇒ NAV/share = 1.000000
-    this.shares.set('genesis-treasury', navMicros);
-  }
-
-  private balStrings(): VaultBalances {
-    return {
-      cspr: this.balances.cspr.toString(),
-      scspr: this.balances.scspr.toString(),
-      csprusd: this.balances.csprusd.toString(),
-    };
-  }
-
-  private navUsd(): bigint {
-    const b = bucketUsd({
-      balances: this.balStrings(),
-      twapMicros: DEMO_TWAP_MICROS,
-      rate: DEMO_RATE,
-      totalShares: 0n,
     });
-    return b.scspr + b.csprusd + b.cspr;
+  }
+
+  private ledgerOf(account: string): Ledger {
+    return this.ledgers.get(account) ?? { cspr: 0n, scspr: 0n, csprusd: 0n };
+  }
+
+  private balStrings(l: Ledger): VaultBalances {
+    return { cspr: l.cspr.toString(), scspr: l.scspr.toString(), csprusd: l.csprusd.toString() };
+  }
+
+  /** Column sums across every account's ledger == the vault's holdings (the sum invariant). */
+  private aggregate(): VaultBalances {
+    let cspr = 0n;
+    let scspr = 0n;
+    let csprusd = 0n;
+    for (const l of this.ledgers.values()) {
+      cspr += l.cspr;
+      scspr += l.scspr;
+      csprusd += l.csprusd;
+    }
+    return { cspr: cspr.toString(), scspr: scspr.toString(), csprusd: csprusd.toString() };
   }
 
   snapshot(): NavSnapshot {
-    return computeNavSnapshot({
-      balances: this.balStrings(),
-      twapMicros: DEMO_TWAP_MICROS,
-      rate: DEMO_RATE,
-      totalShares: this.supply,
-    });
+    return computeNavSnapshot({ balances: this.aggregate(), twapMicros: DEMO_TWAP_MICROS, rate: DEMO_RATE });
   }
 
   position(account: string): UserPosition {
-    return computeUserPosition(account, this.shares.get(account) ?? 0n, this.snapshot());
+    return computeUserPosition(account, this.balStrings(this.ledgerOf(account)), {
+      twapMicros: DEMO_TWAP_MICROS,
+      rate: DEMO_RATE,
+    });
   }
 
-  sharesForCspr(amountCspr: number): bigint {
+  valueUsdForCspr(amountCspr: number): bigint {
     const motes = BigInt(Math.round(amountCspr * 1e9));
-    const depositUsd = (motes * DEMO_TWAP_MICROS) / CSPR;
-    return sharesForDeposit(depositUsd, this.navUsd(), this.supply);
+    return (motes * DEMO_TWAP_MICROS) / CSPR;
   }
 
   deposit(account: string, amountCspr: number): void {
-    const motes = BigInt(Math.round(amountCspr * 1e9));
-    const minted = this.sharesForCspr(amountCspr);
-    this.balances.cspr += motes;
-    this.supply += minted;
-    this.shares.set(account, (this.shares.get(account) ?? 0n) + minted);
+    const l = { ...this.ledgerOf(account) };
+    l.cspr += BigInt(Math.round(amountCspr * 1e9));
+    this.ledgers.set(account, l);
   }
 
-  payoutFor(shares: bigint): InKindPayout {
-    if (this.supply === 0n) return { cspr: '0', scspr: '0', csprusd: '0' };
-    return {
-      cspr: ((this.balances.cspr * shares) / this.supply).toString(),
-      scspr: ((this.balances.scspr * shares) / this.supply).toString(),
-      csprusd: ((this.balances.csprusd * shares) / this.supply).toString(),
-    };
+  withdraw(account: string, asset: WithdrawAsset, amountBase: string): void {
+    const l = { ...this.ledgerOf(account) };
+    const amt = BigInt(amountBase || '0');
+    if (asset === 'CSPR') l.cspr = l.cspr > amt ? l.cspr - amt : 0n;
+    else if (asset === 'sCSPR') l.scspr = l.scspr > amt ? l.scspr - amt : 0n;
+    else l.csprusd = l.csprusd > amt ? l.csprusd - amt : 0n;
+    this.ledgers.set(account, l);
   }
 
-  redeem(account: string, shares: bigint): void {
-    const held = this.shares.get(account) ?? 0n;
-    const burn = shares > held ? held : shares;
-    if (burn === 0n || this.supply === 0n) return;
-    const out = this.payoutFor(burn);
-    this.balances.cspr -= BigInt(out.cspr);
-    this.balances.scspr -= BigInt(out.scspr);
-    this.balances.csprusd -= BigInt(out.csprusd);
-    this.supply -= burn;
-    this.shares.set(account, held - burn);
+  redeem(account: string): void {
+    this.ledgers.set(account, { cspr: 0n, scspr: 0n, csprusd: 0n });
   }
 }
 
@@ -164,7 +154,6 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
 
   const refresh = useCallback(() => {
     if (useLive && account) {
-      // Live: read whole-vault NAV + this account's position from the backend.
       void Promise.all([fetchVault(), fetchPosition(account)])
         .then(([v, p]: [VaultApiResponse, { live: boolean; position: UserPosition | null }]) => {
           setLive(v.live);
@@ -187,18 +176,8 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
     refresh();
   }, [refresh]);
 
-  const previewDeposit = useCallback(
-    (amountCspr: number) => {
-      const shares = demo.current!.sharesForCspr(amountCspr);
-      const supply = BigInt(vault.totalShares) + shares;
-      const pct = supply === 0n ? 0 : Number((shares * 10_000n) / supply);
-      return { shares: shares.toString(), pctOfPoolBps: pct };
-    },
-    [vault.totalShares],
-  );
-
-  const previewRedeem = useCallback((shares: string) => {
-    return demo.current!.payoutFor(BigInt(shares || '0'));
+  const previewDeposit = useCallback((amountCspr: number) => {
+    return { valueUsdMicros: demo.current!.valueUsdForCspr(amountCspr).toString() };
   }, []);
 
   const deposit = useCallback(
@@ -217,7 +196,6 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
         }
         return;
       }
-      // Demo: choreograph the same phases, then mutate the in-memory vault.
       setTx({ phase: 'signing', deployHash: null, error: null });
       demo.current!.deposit(account, amountCspr);
       setTx({ phase: 'finalized', deployHash: 'demo-' + Date.now().toString(16), error: null });
@@ -226,13 +204,13 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
     [account, useLive, wallet.provider, refresh],
   );
 
-  const redeem = useCallback(
-    async (shares: string) => {
+  const withdraw = useCallback(
+    async (asset: WithdrawAsset, amountBase: string) => {
       if (!account) return;
       if (useLive && wallet.provider) {
         setTx({ phase: 'building', deployHash: null, error: null });
         try {
-          const hash = await submitRedeem(wallet.provider, account, shares, (phase) =>
+          const hash = await submitWithdraw(wallet.provider, account, asset, amountBase, (phase) =>
             setTx((t) => ({ ...t, phase })),
           );
           setTx({ phase: 'finalized', deployHash: hash, error: null });
@@ -243,16 +221,34 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
         return;
       }
       setTx({ phase: 'signing', deployHash: null, error: null });
-      demo.current!.redeem(account, BigInt(shares || '0'));
+      demo.current!.withdraw(account, asset, amountBase);
       setTx({ phase: 'finalized', deployHash: 'demo-' + Date.now().toString(16), error: null });
       refresh();
     },
     [account, useLive, wallet.provider, refresh],
   );
 
+  const redeem = useCallback(async () => {
+    if (!account) return;
+    if (useLive && wallet.provider) {
+      setTx({ phase: 'building', deployHash: null, error: null });
+      try {
+        const hash = await submitRedeem(wallet.provider, account, (phase) => setTx((t) => ({ ...t, phase })));
+        setTx({ phase: 'finalized', deployHash: hash, error: null });
+        refresh();
+      } catch (e) {
+        setTx({ phase: 'error', deployHash: null, error: e instanceof Error ? e.message : 'Withdraw failed' });
+      }
+      return;
+    }
+    setTx({ phase: 'signing', deployHash: null, error: null });
+    demo.current!.redeem(account);
+    setTx({ phase: 'finalized', deployHash: 'demo-' + Date.now().toString(16), error: null });
+    refresh();
+  }, [account, useLive, wallet.provider, refresh]);
+
   const resetTx = useCallback(() => setTx({ phase: 'idle', deployHash: null, error: null }), []);
 
-  // Reset the position when the wallet disconnects.
   useEffect(() => {
     if (!wallet.connected) {
       setPosition(null);
@@ -267,12 +263,12 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
       position,
       tx,
       previewDeposit,
-      previewRedeem,
       deposit,
+      withdraw,
       redeem,
       refresh,
       resetTx,
     }),
-    [live, vault, position, tx, previewDeposit, previewRedeem, deposit, redeem, refresh, resetTx, wallet.connected],
+    [live, vault, position, tx, previewDeposit, deposit, withdraw, redeem, refresh, resetTx],
   );
 }

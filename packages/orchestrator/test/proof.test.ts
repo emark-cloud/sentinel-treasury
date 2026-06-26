@@ -28,6 +28,7 @@ function receiptWith(
     actionId: '0',
     timestamp: '1',
     agent: h32('a1'),
+    account: h32('ac'),
     actionKind: 'SwapToStable',
     regime: 'Stressed',
     perceptionHash,

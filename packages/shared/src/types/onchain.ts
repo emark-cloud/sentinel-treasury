@@ -46,49 +46,62 @@ export interface PolicyConfig {
 }
 
 /**
- * A NAV/share snapshot of the whole vault (ERC-4626-style share-issuing vault). Mirrors the
- * vault's `nav_usd()` / `total_shares()` / `balances()` views; `navPerShareMicros` is derived
- * (`totalNavUsd / totalShares`, micro-USD per share) so the dashboard can price any position.
+ * Aggregate TVL view of the whole (multi-tenant) vault — the sum of every account's ledger.
+ * Mirrors the vault's `nav_usd()` / `balances()` views. There are no shares: each depositor owns
+ * an explicit ledger slice, so the vault's holdings are just the column sums of all accounts.
  * All on-chain numerics are decimal strings (micro-USD for `*Usd`, base units for balances).
  */
 export interface NavSnapshot {
   totalNavUsd: string;
-  totalShares: string;
-  navPerShareMicros: string;
   balances: VaultBalances;
 }
 
 /**
- * A single depositor's position, derived from their share balance and the live NAV snapshot.
- * `assetBreakdown` is the depositor's pro-rata slice of each bucket (what an in-kind `redeem`
- * would pay out), and `pctOfPoolBps` is their share of the pool in basis points.
+ * A single depositor's position in the multi-tenant vault: their *own* base-unit ledger
+ * `balances` (what a withdraw/redeem pays out directly — no pro-rata pooling), the micro-USD
+ * `valueUsd` of that slice, and its USD-normalized `allocBps` against their own band. Mirrors the
+ * vault's `account_balances()` / `account_value_usd()` views.
  */
 export interface UserPosition {
   account: string;
-  shares: string;
+  balances: VaultBalances;
   valueUsd: string;
-  pctOfPoolBps: number;
-  assetBreakdown: VaultBalances;
+  allocBps: AllocationBps;
 }
 
 /**
- * Rust: `Deposited` / `Redeemed` events the vault emits on share mint/burn. The off-chain
- * position index reconstructs per-account share balances by summing `sharesMinted` (deposits)
- * minus `sharesBurned` (redeems) per account from the vault's event stream (CSPR.cloud).
+ * Rust: `Deposited` / `Withdrawn` / `Redeemed` events the vault emits as funds move in/out of an
+ * account's ledger. The off-chain indexer uses `Deposited` only to *discover the live account set*
+ * (whose ledgers to read + which accounts the agent should iterate); authoritative balances come
+ * from the per-account contract views, not event replay.
  */
 export interface DepositedEvent {
   depositor: string;
   token: string | null;
   amount: string;
-  sharesMinted: string;
+}
+
+export interface WithdrawnEvent {
+  account: string;
+  token: string | null;
+  amount: string;
 }
 
 export interface RedeemedEvent {
   redeemer: string;
-  sharesBurned: string;
   csprOut: string;
   scsprOut: string;
   csprusdOut: string;
+}
+
+/** Rust: `AccountPolicySet` — a depositor set their own (envelope-clamped) guardrails. */
+export interface AccountPolicySetEvent {
+  account: string;
+  perActionCapUsd: string;
+  dailyCapUsd: string;
+  maxSlippageBps: number;
+  minScsprBps: number;
+  maxScsprBps: number;
 }
 
 /**
@@ -100,6 +113,8 @@ export interface Receipt {
   actionId: string;
   timestamp: string;
   agent: string;
+  /** The depositor account whose ledger slice this action moved (multi-tenant vault). */
+  account: string;
   actionKind: ActionKind;
   regime: Regime;
   perceptionHash: Hex32;

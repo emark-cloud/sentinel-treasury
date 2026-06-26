@@ -90,6 +90,10 @@ pub struct Receipt {
     pub action_id: u64,
     pub timestamp: u64,
     pub agent: Address,
+    /// The depositor account whose ledger slice this action moved (multi-tenant vault). The agent
+    /// names it as a separate `execute_rebalance` argument; recording it here makes every receipt
+    /// answer "whose funds?" without an off-chain join.
+    pub account: Address,
     pub action_kind: ActionKind,
     pub regime: Regime,
     pub perception_hash: [u8; 32],

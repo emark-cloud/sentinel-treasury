@@ -6,15 +6,9 @@
 'use client';
 import type { DepositorApi } from '../../lib/depositor';
 import type { WalletApi } from '../../lib/wallet';
-import { SHARE_SYMBOL } from '../../lib/chain';
 import { fmtAmount, fmtBps, fmtUsdMicros, truncHash } from '../../lib/format';
 
 const COLORS = { scspr: 'var(--green)', csprusd: 'var(--info)', cspr: 'var(--text-faint)' };
-
-function fmtShares(raw: string): string {
-  // Shares are minted 1:1 with micro-USD, so /1e6 reads on a dollar-like scale.
-  return (Number(raw) / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 });
-}
 
 function StatRow({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -50,7 +44,9 @@ export function PositionPanel({
   onWithdraw: () => void;
 }) {
   const { position } = depositor;
-  const navIndex = (Number(depositor.vault.navPerShareMicros) / 1e6).toFixed(4);
+  const empty =
+    !position ||
+    (position.balances.cspr === '0' && position.balances.scspr === '0' && position.balances.csprusd === '0');
 
   return (
     <section className="card">
@@ -67,33 +63,33 @@ export function PositionPanel({
       {!wallet.connected ? (
         <div style={{ padding: '10px 2px', color: 'var(--text-dim)', fontSize: 12 }}>
           <p style={{ margin: '0 0 10px' }}>
-            Connect a Casper wallet to deposit and track your share of the treasury.
+            Connect a Casper wallet to deposit and track your own position in the treasury.
           </p>
           <button className="btn" onClick={wallet.connect} disabled={wallet.connecting} style={{ width: '100%' }}>
             {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
           </button>
         </div>
-      ) : !position || position.shares === '0' ? (
+      ) : empty ? (
         <div style={{ padding: '8px 2px' }}>
           <p style={{ margin: '0 0 10px', color: 'var(--text-dim)', fontSize: 12 }}>
-            No deposits yet. Deposit CSPR to receive {SHARE_SYMBOL} shares — a pro-rata claim on the
-            vault the agent manages.
+            No deposits yet. Deposit CSPR to open a position in the treasury the agent manages —
+            withdraw your value anytime.
           </p>
           <button className="btn" onClick={onDeposit} style={{ width: '100%' }}>+ Deposit CSPR</button>
         </div>
       ) : (
         <>
-          <StatRow label="value" value={fmtUsdMicros(position.valueUsd)} accent />
-          <StatRow label={`shares (${SHARE_SYMBOL})`} value={fmtShares(position.shares)} />
-          <StatRow label="NAV / share" value={navIndex} />
-          <StatRow label="% of pool" value={fmtBps(position.pctOfPoolBps)} />
+          <StatRow label="value" value={fmtUsdMicros(position!.valueUsd)} accent />
+          <div style={{ fontSize: 10, color: 'var(--text-faint)', padding: '2px 0' }}>
+            your allocation: {fmtBps(position!.allocBps.scspr)} sCSPR · {fmtBps(position!.allocBps.csprusd)} stable · {fmtBps(position!.allocBps.cspr)} CSPR
+          </div>
 
           <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-            <span className="label">your in-kind slice (withdraw returns)</span>
+            <span className="label">your holdings (withdraw returns these)</span>
             <div style={{ marginTop: 4 }}>
-              <AssetSlice k="scspr" motesOrUnits={position.assetBreakdown.scspr} />
-              <AssetSlice k="csprusd" motesOrUnits={position.assetBreakdown.csprusd} />
-              <AssetSlice k="cspr" motesOrUnits={position.assetBreakdown.cspr} />
+              <AssetSlice k="scspr" motesOrUnits={position!.balances.scspr} />
+              <AssetSlice k="csprusd" motesOrUnits={position!.balances.csprusd} />
+              <AssetSlice k="cspr" motesOrUnits={position!.balances.cspr} />
             </div>
           </div>
 

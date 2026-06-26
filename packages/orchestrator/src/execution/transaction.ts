@@ -10,7 +10,7 @@
 import type { ActionKind, RebalanceAction, Regime } from '@sentinel/shared';
 import { ContractCallBuilder, Args, CLValue, PublicKey } from '../casper/sdk.js';
 import type { TransactionT } from '../casper/sdk.js';
-import { rebalanceParamsCLValue } from './serialize.js';
+import { rebalanceParamsCLValue, accountAddressCLValue } from './serialize.js';
 
 /** Token-package routes per swap kind (`path[0]` is the input token the vault approves). */
 export interface SwapRoutes {
@@ -56,6 +56,8 @@ export interface ExecuteRebalanceTxParams {
   chainName: string;
   /** Gas payment in motes (cross-contract swaps are the costly case). */
   paymentMotes: number;
+  /** Depositor account-hash (hex) whose ledger slice this action rebalances (multi-tenant). */
+  accountHashHex: string;
   action: RebalanceAction;
   regime: Regime;
   perceptionHash: string;
@@ -73,12 +75,13 @@ export function buildExecuteRebalanceTx(p: ExecuteRebalanceTxParams): Transactio
     decisionHash: p.decisionHash,
     path: routeForKind(p.action.kind, p.routes),
   });
+  const account = accountAddressCLValue(p.accountHashHex);
 
   let builder = new ContractCallBuilder()
     .from(PublicKey.fromHex(p.agentPublicKeyHex))
     .byPackageHash(p.vaultPackageHash)
     .entryPoint('execute_rebalance')
-    .runtimeArgs(Args.fromMap({ params }))
+    .runtimeArgs(Args.fromMap({ account, params }))
     .chainName(p.chainName)
     .payment(p.paymentMotes);
   if (p.ttlMs !== undefined) builder = builder.ttl(p.ttlMs);

@@ -6,25 +6,19 @@
  * (`vault.rs` `bucket_usd` / `total_nav_usd` / `redeem`). This module re-exports it and binds the
  * orchestrator's on-chain `ExchangeRateInputs` to the shared `ExchangeRate` shape.
  *
- * Shares come from the vault's `Deposited`/`Redeemed` event stream (mint/burn happen only there),
- * reconstructed via `buildShareLedger`; NAV is computed from the three balances + Styks TWAP + the
- * live sCSPR rate. The event source is injected so the CSPR.cloud wiring stays a thin adapter.
+ * Multi-tenant: each depositor owns an explicit ledger slice read from the contract's per-account
+ * views (`account_balances`); valuation (USD value + allocation) is the pure math here, kept in
+ * lock-step with the on-chain `bucket_usd` / `compute_alloc`.
  */
 export {
   bucketUsd,
   computeNavSnapshot,
   computeUserPosition,
-  buildShareLedger,
-  StaticShareLedger,
-  readPositions,
+  allocationBps,
+  totalUsd,
   normalizeAccount,
 } from '@sentinel/shared';
-export type {
-  NavInputs,
-  ExchangeRate,
-  ShareLedger,
-  ShareEventSource,
-} from '@sentinel/shared';
+export type { NavInputs, ExchangeRate } from '@sentinel/shared';
 
 // The orchestrator reads the rate as `ExchangeRateInputs` (bigint fields); it is structurally a
 // `@sentinel/shared` `ExchangeRate`, so it drops into `NavInputs.rate` directly.

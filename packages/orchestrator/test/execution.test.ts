@@ -71,6 +71,7 @@ const swap: RebalanceAction = {
 
 const req = (cycleId: string, action: RebalanceAction = swap) => ({
   cycleId,
+  accountHashHex: h32('ac'),
   action,
   regime: 'Stressed' as const,
   perceptionHash: h32('ab'),

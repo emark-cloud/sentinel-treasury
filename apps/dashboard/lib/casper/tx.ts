@@ -16,7 +16,7 @@
  * (needs the redeployed share-vault + a funded wallet) — see the plan's verification section.
  */
 import { ContractCallBuilder, Args, CLValue, PublicKey, RpcClient, HttpHandler } from 'casper-js-sdk';
-import { CONTRACTS, NETWORK, NODE_RPC_URL, GAS } from '../chain';
+import { CONTRACTS, NETWORK, GAS } from '../chain';
 import type { CasperWalletProvider } from '../wallet';
 import type { TxPhase } from '../depositor';
 
@@ -31,8 +31,10 @@ function hexToBytes(hex: string): Uint8Array {
   return out;
 }
 
+// Submit through the same-origin server proxy (`app/api/rpc`), not the node directly: the public
+// Testnet node sends no CORS headers, so a browser fetch straight to it fails with "Failed to fetch".
 function rpc(): RpcClient {
-  return new RpcClient(new HttpHandler(NODE_RPC_URL, 'fetch'));
+  return new RpcClient(new HttpHandler('/api/rpc', 'fetch'));
 }
 
 /** Sign a built transaction with the wallet and submit it; returns the transaction hash hex. */
@@ -96,15 +98,32 @@ export async function submitDeposit(
   return signAndSubmit(tx as never, provider, signerKeyHex, onPhase);
 }
 
-/** Redeem `shares` → burn shares and receive the in-kind pro-rata payout. */
-export async function submitRedeem(
+/** Asset enum index for the vault's `withdraw(asset, amount)` (Rust `enum Asset { Cspr, Scspr, Csprusd }`). */
+const ASSET_INDEX: Record<'CSPR' | 'sCSPR' | 'csprUSD', number> = { CSPR: 0, sCSPR: 1, csprUSD: 2 };
+
+/** Withdraw `amountBase` base units of one asset from the caller's own ledger slice (in-kind). */
+export async function submitWithdraw(
   provider: CasperWalletProvider,
   signerKeyHex: string,
-  shares: string,
+  asset: 'CSPR' | 'sCSPR' | 'csprUSD',
+  amountBase: string,
   onPhase: Phase,
 ): Promise<string> {
   onPhase('building');
-  const args = Args.fromMap({ shares_amount: CLValue.newCLUInt256(BigInt(shares)) });
-  const tx = vaultCall(signerKeyHex, 'redeem', args, GAS.redeem);
+  // Odra unit enum → a single u8 variant index, read as the arg's raw value bytes (CLAny).
+  const assetClv = CLValue.newCLAny(Buffer.from(Uint8Array.of(ASSET_INDEX[asset])));
+  const args = Args.fromMap({ asset: assetClv, amount: CLValue.newCLUInt256(BigInt(amountBase)) });
+  const tx = vaultCall(signerKeyHex, 'withdraw', args, GAS.redeem);
+  return signAndSubmit(tx as never, provider, signerKeyHex, onPhase);
+}
+
+/** Full exit: burn nothing — pay out the caller's entire in-kind ledger slice and zero it. */
+export async function submitRedeem(
+  provider: CasperWalletProvider,
+  signerKeyHex: string,
+  onPhase: Phase,
+): Promise<string> {
+  onPhase('building');
+  const tx = vaultCall(signerKeyHex, 'redeem', Args.fromMap({}), GAS.redeem);
   return signAndSubmit(tx as never, provider, signerKeyHex, onPhase);
 }

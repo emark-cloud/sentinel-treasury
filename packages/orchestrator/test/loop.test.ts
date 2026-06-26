@@ -14,7 +14,7 @@ import { Deliberator, DecisionEngine } from '../src/decision/deliberate.js';
 import { Scout } from '../src/agents/scout.js';
 import type { DecisionInputs, DecisionPolicy } from '../src/decision/types.js';
 import { SentinelLoop } from '../src/loop.js';
-import type { SentinelLoopDeps, SentinelLoopConfig } from '../src/loop.js';
+import type { SentinelLoopDeps, SentinelLoopConfig, AccountContext } from '../src/loop.js';
 import { buildScenario, demoBalances } from '../src/scenario/scenarios.js';
 import type { ScenarioKind } from '../src/scenario/scenarios.js';
 import type { VaultBalances } from '@sentinel/shared';
@@ -39,6 +39,14 @@ const POLICY: DecisionPolicy = {
 };
 
 const TARGETS = { router: h32('cc'), staking: h32('dd') };
+
+/** A depositor context for the multi-tenant loop: the cycle's balances are this account's slice. */
+const ACCOUNT_HASH = h32('ac');
+const acct = (balances: VaultBalances): AccountContext => ({
+  accountHashHex: ACCOUNT_HASH,
+  balances,
+  policy: POLICY,
+});
 
 class FakeChain implements ChainClient {
   submitted = 0;
@@ -126,6 +134,7 @@ describe('SentinelLoop end-to-end', () => {
     const { loop, chain, scn } = makeLoop('price-shock', balances);
     const res = await loop.runCycle({
       cycleId: 'cyc-shock',
+      account: acct(balances),
       premium: scn.premium,
       volatility: scn.volatility,
       now: 1_000_000_000,
@@ -148,6 +157,7 @@ describe('SentinelLoop end-to-end', () => {
     const { loop, scn } = makeLoop('calm', balances);
     const res = await loop.runCycle({
       cycleId: 'cyc-calm',
+      account: acct(balances),
       premium: scn.premium,
       volatility: scn.volatility,
       now: 1_000_000_000,
@@ -162,7 +172,7 @@ describe('SentinelLoop end-to-end', () => {
   it('oracle divergence rejects the cycle before it acts (no tx)', async () => {
     const balances = demoBalances({ scsprBps: 6000 });
     const { loop, chain } = makeLoop('oracle-divergence', balances);
-    const res = await loop.runCycle({ cycleId: 'cyc-oracle', now: 1_000_000_000 });
+    const res = await loop.runCycle({ cycleId: 'cyc-oracle', account: acct(balances), now: 1_000_000_000 });
 
     expect(res.stage).toBe('guarded');
     expect(res.acted).toBe(false);
@@ -174,7 +184,7 @@ describe('SentinelLoop end-to-end', () => {
   it('paused: perceives nothing, submits nothing', async () => {
     const balances = demoBalances({ scsprBps: 6000 });
     const { loop, chain } = makeLoop('price-shock', balances);
-    const res = await loop.runCycle({ cycleId: 'cyc-paused', paused: true, now: 1_000_000_000 });
+    const res = await loop.runCycle({ cycleId: 'cyc-paused', account: acct(balances), paused: true, now: 1_000_000_000 });
 
     expect(res.stage).toBe('paused');
     expect(res.acted).toBe(false);
@@ -185,7 +195,7 @@ describe('SentinelLoop end-to-end', () => {
     // Calm regime already at the 60/40 calm target → nothing to correct.
     const balances = demoBalances({ scsprBps: 6000, twapUsd: 0.0307 });
     const { loop, chain } = makeLoop('calm', balances);
-    const res = await loop.runCycle({ cycleId: 'cyc-noop', now: 1_000_000_000 });
+    const res = await loop.runCycle({ cycleId: 'cyc-noop', account: acct(balances), now: 1_000_000_000 });
 
     expect(res.decision!.decision.finalAction.kind).toBe('NoOp');
     expect(res.execution!.result).toBe('Skipped');
@@ -201,7 +211,7 @@ describe('SentinelLoop end-to-end', () => {
     breaker.record('Reverted'); // trips at maxConsecutiveReverts=3
     expect(breaker.isTripped).toBe(true);
 
-    const res = await loop.runCycle({ cycleId: 'cyc-after-trip', now: 1_000_000_000 });
+    const res = await loop.runCycle({ cycleId: 'cyc-after-trip', account: acct(balances), now: 1_000_000_000 });
     expect(res.stage).toBe('paused');
     expect(res.reason).toMatch(/circuit breaker/);
   });

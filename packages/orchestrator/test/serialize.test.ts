@@ -99,6 +99,7 @@ describe('Receipt codec round-trip', () => {
       actionId: '42',
       timestamp: '1718000000000',
       agent: h32('a1'),
+      account: h32('ac'),
       actionKind: 'SwapToStable',
       regime: 'Stressed',
       perceptionHash: h32('ab'),

@@ -8,8 +8,8 @@
 import { useState } from 'react';
 import type { DepositorApi, TxPhase } from '../lib/depositor';
 import type { WalletApi } from '../lib/wallet';
-import { SHARE_SYMBOL, deployUrl } from '../lib/chain';
-import { fmtAmount, fmtBps } from '../lib/format';
+import { deployUrl } from '../lib/chain';
+import { fmtAmount } from '../lib/format';
 
 const PHASES: TxPhase[] = ['building', 'signing', 'submitted', 'finalized'];
 const PHASE_LABEL: Record<TxPhase, string> = {
@@ -130,11 +130,13 @@ export function DepositModal({
       />
       {preview && (
         <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-dim)' }}>
-          You receive ≈{' '}
+          Credited to your position ≈{' '}
           <span className="mono" style={{ color: 'var(--green)' }}>
-            {(Number(preview.shares) / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })} {SHARE_SYMBOL}
-          </span>{' '}
-          ({fmtBps(preview.pctOfPoolBps)} of pool)
+            ${(Number(preview.valueUsdMicros) / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+          </span>
+          <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2 }}>
+            lands as your own CSPR · the agent manages it within your guardrails · withdraw anytime
+          </div>
         </div>
       )}
 
@@ -166,10 +168,8 @@ export function WithdrawModal({
   depositor: DepositorApi;
   onClose: () => void;
 }) {
-  const [pct, setPct] = useState(50);
-  const heldShares = BigInt(depositor.position?.shares ?? '0');
-  const redeemShares = ((heldShares * BigInt(Math.round(pct))) / 100n).toString();
-  const payout = depositor.previewRedeem(redeemShares);
+  const bal = depositor.position?.balances ?? { cspr: '0', scspr: '0', csprusd: '0' };
+  const empty = bal.cspr === '0' && bal.scspr === '0' && bal.csprusd === '0';
   const busy = depositor.tx.phase !== 'idle' && depositor.tx.phase !== 'error' && depositor.tx.phase !== 'finalized';
 
   return (
@@ -177,26 +177,17 @@ export function WithdrawModal({
       <h3 className="card-title">
         Withdraw {!wallet.isReal && <span className="pill tone-amber" style={{ fontSize: 9, padding: '1px 6px' }}>demo</span>}
       </h3>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span className="label">redeem</span>
-        <span className="mono" style={{ fontSize: 14, color: 'var(--text)' }}>{pct}%</span>
-      </div>
-      <input
-        type="range"
-        min="1"
-        max="100"
-        value={pct}
-        onChange={(e) => setPct(Number(e.target.value))}
-        disabled={busy}
-        style={{ width: '100%', marginTop: 4, accentColor: 'var(--info)' }}
-      />
+      <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--text-dim)' }}>
+        A full exit pays out your own in-kind slice and clears your position. These are your funds —
+        no pooling, no pro-rata of anyone else.
+      </p>
 
-      <div style={{ marginTop: 10 }}>
+      <div style={{ marginTop: 6 }}>
         <span className="label">you receive in-kind</span>
         <div style={{ marginTop: 4, fontSize: 12 }}>
-          <Line label="sCSPR" value={fmtAmount(payout.scspr, 'sCSPR')} note="16h to unstake → CSPR, or sell instantly on the DEX" />
-          <Line label="csprUSD" value={fmtAmount(payout.csprusd, 'csprUSD')} />
-          <Line label="CSPR" value={fmtAmount(payout.cspr, 'CSPR')} />
+          <Line label="sCSPR" value={fmtAmount(bal.scspr, 'sCSPR')} note="16h to unstake → CSPR, or sell instantly on the DEX" />
+          <Line label="csprUSD" value={fmtAmount(bal.csprusd, 'csprUSD')} />
+          <Line label="CSPR" value={fmtAmount(bal.cspr, 'CSPR')} />
         </div>
       </div>
 
@@ -208,11 +199,11 @@ export function WithdrawModal({
         </button>
         <button
           className="btn"
-          onClick={() => void depositor.redeem(redeemShares)}
-          disabled={busy || heldShares === 0n || depositor.tx.phase === 'finalized'}
+          onClick={() => void depositor.redeem()}
+          disabled={busy || empty || depositor.tx.phase === 'finalized'}
           style={{ flex: 1, borderColor: 'var(--coral)', color: 'var(--coral)' }}
         >
-          {busy ? '…' : 'Withdraw'}
+          {busy ? '…' : 'Withdraw all'}
         </button>
       </div>
     </Backdrop>

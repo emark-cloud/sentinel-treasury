@@ -75,3 +75,11 @@ export function encodeRebalanceParams(input: RebalanceParamsInput): Uint8Array {
 export function rebalanceParamsCLValue(input: RebalanceParamsInput): InstanceType<typeof CLValue> {
   return CLValue.newCLAny(Buffer.from(encodeRebalanceParams(input)));
 }
+
+/**
+ * Encode the depositor `account` argument for `execute_rebalance(account, params)` — an Odra
+ * `Address` over a `Key::Account`. Same `CLAny`-wrapped raw-bytes convention as the params arg.
+ */
+export function accountAddressCLValue(accountHashHex: string): InstanceType<typeof CLValue> {
+  return CLValue.newCLAny(Buffer.from(new ByteWriter().accountAddress(accountHashHex).finish()));
+}

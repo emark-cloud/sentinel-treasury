@@ -163,7 +163,7 @@ async function install(name, wasmFile, initArgs, paymentMotes) {
   const auditPkg = await install('AuditLog', 'AuditLog.wasm', {
     admin: any(new W().account(ownerAccountHash)),
     agent: any(new W().account(agentAccountHash)),
-  }, 250_000_000_000);
+  }, 500_000_000_000);
   if (DRY) { console.log('[dry] stopping after AuditLog build.'); return; }
 
   // 2. SentinelVault(owner, agent, audit_log, cfg, styks, router, scspr, wusdt)
@@ -177,7 +177,7 @@ async function install(name, wasmFile, initArgs, paymentMotes) {
     router: any(new W().contract(ROUTER)),
     scspr: any(new W().contract(SCSPR)),
     wusdt: any(new W().contract(WUSDT)),
-  }, 400_000_000_000);
+  }, 700_000_000_000);
 
   // 3. AuditLog.set_vault(vault) — bind the vault as the cross-contract writer (admin-only).
   console.log('  set_vault: binding vault as AuditLog writer…');

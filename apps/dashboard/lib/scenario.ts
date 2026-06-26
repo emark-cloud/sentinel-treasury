@@ -128,6 +128,7 @@ export class ScenarioSource implements CycleSource {
       actionId: cycleId,
       timestamp: String(startedAt),
       agent: 'agent',
+      account: 'demo-account',
       actionKind: proposal.action.kind,
       regime,
       perceptionHash,

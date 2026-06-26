@@ -1,20 +1,20 @@
 /**
- * NAV / share-position math for the share-issuing vault (spec §4 depositor flow). Lives in
+ * Per-account valuation for the multi-tenant vault (spec §4 depositor flow). Lives in
  * `@sentinel/shared` because it is consumed on both sides of the boundary: the orchestrator
  * (`data/positionReader`) and the dashboard (server-side position API) must agree byte-for-byte
- * with what the contract does on-chain (`vault.rs` `bucket_usd` / `total_nav_usd` / `redeem`), so
- * the value a depositor sees equals what an in-kind `redeem` would actually pay out.
+ * with what the contract does on-chain (`vault.rs` `bucket_usd` / `compute_alloc` /
+ * `account_value_usd`), so the value a depositor sees equals what a withdraw/redeem actually pays.
  *
- * All USD values are micro-USD (1e6 = $1), matching the on-chain cap denomination; balances are
- * base-unit decimal strings. Shares are integer counts (minted 1:1 with micro-USD on the first
- * deposit), so the share-price index is pegged to 1.000000 at genesis and tracks realized P&L.
+ * There are no shares: each depositor owns an explicit ledger slice (`cspr`/`scspr`/`csprusd`),
+ * read directly from the contract's per-account views. Valuation is pure: balances + TWAP + the
+ * live sCSPR rate → micro-USD. All USD values are micro-USD (1e6 = $1); balances are base-unit
+ * decimal strings.
  */
-import type { NavSnapshot, UserPosition, VaultBalances, DepositedEvent, RedeemedEvent } from './types/onchain.js';
+import type { AllocationBps, NavSnapshot, UserPosition, VaultBalances } from './types/onchain.js';
 
 /** Motes / sCSPR base-unit scale (9 decimals). */
 const CSPR_SCALE = 1_000_000_000n;
-/** Micro-USD scale (1e6 = $1) — the share-price index is reported at this precision. */
-const USD_SCALE = 1_000_000n;
+const BPS = 10_000n;
 
 type Numeric = string | bigint;
 const big = (v: Numeric): bigint => (typeof v === 'bigint' ? v : BigInt(v));
@@ -25,14 +25,12 @@ export interface ExchangeRate {
   totalSupply: Numeric;
 }
 
-/** Inputs needed to value the vault, mirroring the on-chain `bucket_usd` read. */
+/** Inputs needed to value a set of balances, mirroring the on-chain `bucket_usd` read. */
 export interface NavInputs {
   balances: VaultBalances;
   /** CSPR/USD TWAP in micro-USD per CSPR. */
   twapMicros: Numeric;
   rate: ExchangeRate;
-  /** Total shares outstanding (the redemption denominator). */
-  totalShares: Numeric;
 }
 
 /** Micro-USD value of `motes` native CSPR at the given TWAP. */
@@ -42,7 +40,8 @@ function csprMotesToUsd(motes: bigint, twapMicros: bigint): bigint {
 
 /**
  * The three buckets in micro-USD, exactly as the contract computes them: sCSPR → CSPR-equivalent
- * at the live rate → USD; stable is already micro-USD; CSPR via TWAP.
+ * at the live rate → USD; stable is already micro-USD; CSPR via TWAP. Works for any balance set —
+ * one account's ledger slice or the vault aggregate.
  */
 export function bucketUsd(input: NavInputs): { scspr: bigint; csprusd: bigint; cspr: bigint } {
   const twap = big(input.twapMicros);
@@ -60,137 +59,50 @@ export function bucketUsd(input: NavInputs): { scspr: bigint; csprusd: bigint; c
   };
 }
 
-/** Assemble the whole-vault NAV/share snapshot. */
+/** USD-normalized allocation (bps) for a balance set; `scspr + csprusd + cspr == 10000`. */
+export function allocationBps(input: NavInputs): AllocationBps {
+  const b = bucketUsd(input);
+  const total = b.scspr + b.csprusd + b.cspr;
+  if (total === 0n) return { scspr: 0, csprusd: 0, cspr: 0 };
+  const scspr = Number((b.scspr * BPS) / total);
+  const csprusd = Number((b.csprusd * BPS) / total);
+  return { scspr, csprusd, cspr: 10_000 - scspr - csprusd };
+}
+
+/** Total micro-USD value of a balance set. */
+export function totalUsd(input: NavInputs): bigint {
+  const b = bucketUsd(input);
+  return b.scspr + b.csprusd + b.cspr;
+}
+
+/** Assemble the whole-vault aggregate TVL snapshot from the vault's total holdings. */
 export function computeNavSnapshot(input: NavInputs): NavSnapshot {
-  const buckets = bucketUsd(input);
-  const totalNavUsd = buckets.scspr + buckets.csprusd + buckets.cspr;
-  const totalShares = big(input.totalShares);
-  // Share-price index scaled to 1e6 (1.000000 at genesis; grows with yield, falls with drawdown).
-  const navPerShareMicros = totalShares === 0n ? USD_SCALE : (totalNavUsd * USD_SCALE) / totalShares;
   return {
-    totalNavUsd: totalNavUsd.toString(),
-    totalShares: totalShares.toString(),
-    navPerShareMicros: navPerShareMicros.toString(),
+    totalNavUsd: totalUsd(input).toString(),
     balances: input.balances,
   };
 }
 
 /**
- * A single account's position: USD value, % of pool, and the in-kind asset slice an immediate
- * `redeem(shares)` would pay out (pro-rata of every bucket — what the contract actually transfers).
+ * One account's position, valued from its *own* ledger slice (`account_balances`) at the live
+ * price/rate — exactly what the contract's `account_value_usd` / `compute_alloc` return, and what
+ * a withdraw/redeem pays out directly (no pro-rata pooling).
  */
-export function computeUserPosition(account: string, shares: Numeric, nav: NavSnapshot): UserPosition {
-  const sh = big(shares);
-  const totalShares = big(nav.totalShares);
-  const totalNavUsd = big(nav.totalNavUsd);
-  if (totalShares === 0n || sh === 0n) {
-    return {
-      account,
-      shares: sh.toString(),
-      valueUsd: '0',
-      pctOfPoolBps: 0,
-      assetBreakdown: { cspr: '0', scspr: '0', csprusd: '0' },
-    };
-  }
-  const slice = (bal: string): string => ((big(bal) * sh) / totalShares).toString();
+export function computeUserPosition(
+  account: string,
+  balances: VaultBalances,
+  price: { twapMicros: Numeric; rate: ExchangeRate },
+): UserPosition {
+  const input: NavInputs = { balances, twapMicros: price.twapMicros, rate: price.rate };
   return {
     account,
-    shares: sh.toString(),
-    valueUsd: ((totalNavUsd * sh) / totalShares).toString(),
-    pctOfPoolBps: Number((sh * 10_000n) / totalShares),
-    assetBreakdown: {
-      cspr: slice(nav.balances.cspr),
-      scspr: slice(nav.balances.scspr),
-      csprusd: slice(nav.balances.csprusd),
-    },
+    balances,
+    valueUsd: totalUsd(input).toString(),
+    allocBps: allocationBps(input),
   };
 }
 
-/**
- * Shares minted for a `depositUsdMicros` contribution to a pool worth `navBeforeMicros` with
- * `supply` shares outstanding — the exact rule the contract applies (`vault.rs` `shares_to_mint`).
- * The first deposit (empty supply or empty pool) mints 1 share per micro-USD; thereafter the mint
- * is diluted by live NAV so every depositor's entry price is consistent.
- */
-export function sharesForDeposit(depositUsdMicros: Numeric, navBeforeMicros: Numeric, supply: Numeric): bigint {
-  const deposit = big(depositUsdMicros);
-  const before = big(navBeforeMicros);
-  const sup = big(supply);
-  if (sup === 0n || before === 0n) return deposit;
-  return (deposit * sup) / before;
-}
-
-// --------------------------------------------------------------------- share ledger
-
-/** Per-account share balances + the outstanding supply (the authoritative redemption ledger). */
-export interface ShareLedger {
-  totalShares(): bigint;
-  sharesOf(account: string): bigint;
-}
-
-/** Source of the vault's share-changing events (CSPR.cloud event stream, or a fixture in tests). */
-export interface ShareEventSource {
-  deposits(): Promise<DepositedEvent[]>;
-  redeems(): Promise<RedeemedEvent[]>;
-}
-
-/** Normalize an address key so `depositor`/`redeemer` from events match a queried account. */
+/** Normalize an address key so event `depositor`/`account` fields match a queried account. */
 export function normalizeAccount(account: string): string {
   return account.trim().toLowerCase().replace(/^0x/, '');
-}
-
-/**
- * Reconstruct the share ledger by replaying the vault's events: shares are minted only by
- * `Deposited` and burned only by `Redeemed`, so the running sum per account is exact — no need
- * to crack open Odra's internal storage layout.
- */
-export async function buildShareLedger(source: ShareEventSource): Promise<ShareLedger> {
-  const balances = new Map<string, bigint>();
-  let supply = 0n;
-
-  for (const d of await source.deposits()) {
-    const key = normalizeAccount(d.depositor);
-    const minted = big(d.sharesMinted);
-    balances.set(key, (balances.get(key) ?? 0n) + minted);
-    supply += minted;
-  }
-  for (const r of await source.redeems()) {
-    const key = normalizeAccount(r.redeemer);
-    const burned = big(r.sharesBurned);
-    balances.set(key, (balances.get(key) ?? 0n) - burned);
-    supply -= burned;
-  }
-
-  return {
-    totalShares: () => supply,
-    sharesOf: (account: string) => balances.get(normalizeAccount(account)) ?? 0n,
-  };
-}
-
-/** Static ledger for tests / fixtures. */
-export class StaticShareLedger implements ShareLedger {
-  constructor(
-    private readonly supply: bigint,
-    private readonly byAccount: Record<string, bigint>,
-  ) {}
-  totalShares(): bigint {
-    return this.supply;
-  }
-  sharesOf(account: string): bigint {
-    return this.byAccount[normalizeAccount(account)] ?? 0n;
-  }
-}
-
-/**
- * Top-level convenience: given the vault's balances + price/rate + a reconstructed ledger, return
- * the whole-vault snapshot and (optionally) a specific account's position in one shot.
- */
-export function readPositions(
-  navInputs: Omit<NavInputs, 'totalShares'>,
-  ledger: ShareLedger,
-  account?: string,
-): { nav: NavSnapshot; position: UserPosition | null } {
-  const nav = computeNavSnapshot({ ...navInputs, totalShares: ledger.totalShares() });
-  const position = account ? computeUserPosition(account, ledger.sharesOf(account), nav) : null;
-  return { nav, position };
 }

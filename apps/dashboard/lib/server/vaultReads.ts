@@ -13,12 +13,8 @@
  * UI falls back to the in-memory demo vault — the same honesty seam the agent loop uses.
  */
 import {
-  buildShareLedger,
   computeNavSnapshot,
-  computeUserPosition,
-  type DepositedEvent,
   type NavSnapshot,
-  type RedeemedEvent,
   type UserPosition,
   type VaultBalances,
 } from '@sentinel/shared';
@@ -79,67 +75,28 @@ async function readBalances(cfg: ServerConfig): Promise<VaultBalances> {
   return { cspr: cspr.toString(), scspr: scspr.toString(), csprusd: csprusd.toString() };
 }
 
-/**
- * Fetch the vault's share-changing events from CSPR.cloud and split them into the shared event
- * shapes. This is the one live integration point whose exact response schema must be confirmed
- * against the deployed contract (event names + parsed fields); on any failure it returns empty so
- * the snapshot still renders (positions read as 0 until events are wired). See the plan's
- * verification step.
- */
-async function readShareEvents(cfg: ServerConfig): Promise<{ deposits: DepositedEvent[]; redeems: RedeemedEvent[] }> {
-  try {
-    const rows = await getData<{ name?: string; data?: Record<string, unknown> }[]>(
-      cfg,
-      `/contracts/${cfg.vaultContractHash}/events?page=1&limit=1000`,
-    );
-    const deposits: DepositedEvent[] = [];
-    const redeems: RedeemedEvent[] = [];
-    for (const ev of rows ?? []) {
-      const d = ev.data ?? {};
-      if (ev.name === 'Deposited') {
-        deposits.push({
-          depositor: String(d.depositor ?? ''),
-          token: (d.token as string | null) ?? null,
-          amount: String(d.amount ?? '0'),
-          sharesMinted: String(d.shares_minted ?? '0'),
-        });
-      } else if (ev.name === 'Redeemed') {
-        redeems.push({
-          redeemer: String(d.redeemer ?? ''),
-          sharesBurned: String(d.shares_burned ?? '0'),
-          csprOut: String(d.cspr_out ?? '0'),
-          scsprOut: String(d.scspr_out ?? '0'),
-          csprusdOut: String(d.csprusd_out ?? '0'),
-        });
-      }
-    }
-    return { deposits, redeems };
-  } catch {
-    return { deposits: [], redeems: [] };
-  }
-}
-
-/** Whole-vault NAV/share snapshot. `live:false` ⇒ env not configured, caller falls back to demo. */
+/** Whole-vault aggregate TVL snapshot. `live:false` ⇒ env not configured, caller falls back to demo. */
 export async function readVaultSnapshot(): Promise<{ live: boolean; nav: NavSnapshot }> {
   const cfg = readConfig();
   if (!cfg) {
-    return {
-      live: false,
-      nav: { totalNavUsd: '0', totalShares: '0', navPerShareMicros: '1000000', balances: { cspr: '0', scspr: '0', csprusd: '0' } },
-    };
+    return { live: false, nav: { totalNavUsd: '0', balances: { cspr: '0', scspr: '0', csprusd: '0' } } };
   }
-  const [balances, events] = await Promise.all([readBalances(cfg), readShareEvents(cfg)]);
-  const ledger = await buildShareLedger({ deposits: async () => events.deposits, redeems: async () => events.redeems });
-  const nav = computeNavSnapshot({ balances, twapMicros: cfg.twapMicros, rate: cfg.rate, totalShares: ledger.totalShares() });
+  const balances = await readBalances(cfg);
+  const nav = computeNavSnapshot({ balances, twapMicros: cfg.twapMicros, rate: cfg.rate });
   return { live: true, nav };
 }
 
-/** A single account's position against the live snapshot. */
-export async function readPositionFor(account: string): Promise<{ live: boolean; position: UserPosition | null }> {
+/**
+ * A single account's position (its own ledger slice). In the multi-tenant vault this comes from the
+ * contract's `account_balances(account)` view — a per-account on-chain read, not the CSPR.cloud
+ * aggregate. That node-RPC view query is the one piece wired against the live deploy (see the
+ * redeploy/verification step); until then live mode reports the account as not-yet-loaded
+ * (`position: null`) rather than guessing, and the UI keeps the aggregate TVL it can read.
+ */
+export async function readPositionFor(_account: string): Promise<{ live: boolean; position: UserPosition | null }> {
   const cfg = readConfig();
   if (!cfg) return { live: false, position: null };
-  const [balances, events] = await Promise.all([readBalances(cfg), readShareEvents(cfg)]);
-  const ledger = await buildShareLedger({ deposits: async () => events.deposits, redeems: async () => events.redeems });
-  const nav = computeNavSnapshot({ balances, twapMicros: cfg.twapMicros, rate: cfg.rate, totalShares: ledger.totalShares() });
-  return { live: true, position: computeUserPosition(account, ledger.sharesOf(account), nav) };
+  // TODO(post-deploy): query the vault's `account_balances`/`account_value_usd` views by RPC and
+  // map to UserPosition via `computeUserPosition`.
+  return { live: true, position: null };
 }

@@ -55,6 +55,8 @@ export interface ExecutionOutcome {
 
 export interface ExecuteRequest {
   cycleId: string;
+  /** Depositor account-hash (hex) whose ledger slice this cycle rebalances (multi-tenant vault). */
+  accountHashHex: string;
   action: RebalanceAction;
   regime: Regime;
   perceptionHash: string;
@@ -101,6 +103,7 @@ export class ExecutionService {
       vaultPackageHash: this.cfg.vaultPackageHash,
       chainName: this.cfg.chainName,
       paymentMotes: this.cfg.paymentMotes,
+      accountHashHex: req.accountHashHex,
       action: req.action,
       regime: req.regime,
       perceptionHash: req.perceptionHash,

@@ -148,17 +148,21 @@ pnpm --filter @sentinel/dashboard typecheck
 Values to obtain (none are public URLs; source via protocol Testnet UIs, cspr.live, docs/Discords, mentors):
 
 ```
-# Our deployed contracts (UPGRADABLE share-vault redeploy, casper-test, 2026-06-25 — package hashes; D-014)
-# ERC-4626-style share-issuing vault: deposit_cspr/deposit_token mint shares pro-rata to NAV; user-
-# initiated redeem() burns shares and pays out in-kind; views total_shares/shares_of/nav_usd;
-# Deposited/Redeemed events carry the depositor + share delta. Fresh upgradable deploy (added storage).
+# Our deployed contracts (UPGRADABLE multi-tenant vault redeploy, casper-test, 2026-06-26 — package hashes; D-015)
+# Multi-tenant vault (no shares): deposit_cspr/deposit_token credit the depositor's own ledger slice;
+# per-user set_my_policy refines within the owner's envelope; execute_rebalance(account, …) acts on one
+# depositor's slice + policy; user-initiated withdraw/redeem pays out in-kind. Deposited/Redeemed events
+# carry the depositor + amount. Fresh upgradable deploy (added per-account storage).
 # Deployed via casper-js-sdk (packages/orchestrator/scripts/deploy-sharevault*.cjs) rather than odra's
 # livenet backend — odra 2.8.1 pins casper-client 5.0.0 whose tx format the upgraded testnet node
 # (protocol 2.2.2) rejects ("invalid pricing mode"); casper-js-sdk 5.0.12 speaks the current format.
-# The AuditLog install succeeded but the SDK's waitForTransaction threw mid-run; deploy-sharevault-
-# resume.cjs picked up from the vault install (raw info_get_transaction polling instead of the SDK wait).
-VAULT_CONTRACT_HASH=513a28a4846d5c18ac354ff0483b45185780bf6e46f670ce19e926d10f059aa7     # deploy tx 664e963a…; init owner/agent + $50/$200 caps, 1% slip, 15–70% sCSPR band
-AUDITLOG_CONTRACT_HASH=a1a2080d4079b81fd87a51218335d45426e7cd6f6491ccbdfe7a40911a15efdc  # deploy tx a597c982…; set_vault tx 2d784e1b… binds vault as writer
+# Gas note: testnet install cost has risen since D-014 — AuditLog needs 500 CSPR / Vault 700 CSPR payment
+# caps (250/400 now hit "Out of gas"). deploy-sharevault.cjs carries the bumped caps.
+VAULT_CONTRACT_HASH=5031341875f4f89629abe7aa748bfa20b0c6ee9c15e9d9910b3047dea9eff7a0     # deploy tx e92ff5e0…; init owner/agent + $50/$200 caps, 1% slip, 15–70% sCSPR band
+AUDITLOG_CONTRACT_HASH=f8898e6a22590a8e32028d97771384fa54d0fc110cf297ed3f3afb2fecce63f3  # deploy tx 2699438a…; set_vault tx f8d8fe52… binds vault as writer
+# Superseded D-014 share-vault deploy (casper-test, 2026-06-25):
+#   VAULT_CONTRACT_HASH=513a28a4846d5c18ac354ff0483b45185780bf6e46f670ce19e926d10f059aa7  # deploy tx 664e963a…
+#   AUDITLOG_CONTRACT_HASH=a1a2080d4079b81fd87a51218335d45426e7cd6f6491ccbdfe7a40911a15efdc  # deploy tx a597c982…
 # Superseded D-013 deploy (pre-share-vault, casper-test, 2026-06-22):
 #   VAULT_CONTRACT_HASH=949a9c359d12bf02a9f630c8eaeb1459348da6880e563d4ac278077a2f446f20  # deploy tx a2550fe1…
 #   AUDITLOG_CONTRACT_HASH=95dd52c4fc07bb42ce8648f2cf74a8839244410de31b68045b96cb95cf004712  # deploy tx bf796d3b…
@@ -191,7 +195,7 @@ PREMIUM_ENDPOINT_URL=        # we run both ends; + price
 # via the /api/vault + /api/position routes) + VAULT_ENTITY_HASH; absent these the dashboard runs the
 # depositor UX against an in-memory demo vault (tagged `demo`). The browser submits signed deposit/
 # redeem TransactionV1s to NEXT_PUBLIC_NODE_RPC_URL (public node, no token).
-VAULT_ENTITY_HASH=513a28a4846d5c18ac354ff0483b45185780bf6e46f670ce19e926d10f059aa7   # vault package hash (D-014) — CSPR.cloud keys the vault's holdings by this
+VAULT_ENTITY_HASH=5031341875f4f89629abe7aa748bfa20b0c6ee9c15e9d9910b3047dea9eff7a0   # vault package hash (D-015) — CSPR.cloud keys the vault's holdings by this
 NEXT_PUBLIC_NODE_RPC_URL=https://node.testnet.casper.network/rpc
 DASHBOARD_TWAP_MICROS=30700              # display CSPR/USD (micro-USD); on-chain Styks read is authoritative
 DASHBOARD_SCSPR_STAKED=1052              # sCSPR rate numerator   (staked_cspr)  — display only

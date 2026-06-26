@@ -3,116 +3,72 @@ import {
   bucketUsd,
   computeNavSnapshot,
   computeUserPosition,
-  buildShareLedger,
-  StaticShareLedger,
-  readPositions,
+  allocationBps,
+  totalUsd,
   normalizeAccount,
   type NavInputs,
 } from '../src/data/positionReader.js';
+import type { VaultBalances } from '@sentinel/shared';
 
 // 1 CSPR = $0.03 → 30_000 micro-USD per CSPR. sCSPR rate = 1.05 CSPR per sCSPR.
 const TWAP = 30_000n;
 const RATE = { stakedCspr: 105n * 10n ** 9n, totalSupply: 100n * 10n ** 9n }; // 1.05
 
+// 1000 CSPR buffer, 2000 sCSPR, 5000 WUSDT ($5000 stable).
+const BALANCES: VaultBalances = {
+  cspr: (1000n * 10n ** 9n).toString(),
+  scspr: (2000n * 10n ** 9n).toString(),
+  csprusd: (5000n * 10n ** 6n).toString(),
+};
+
 function navInputs(over: Partial<NavInputs> = {}): NavInputs {
-  return {
-    // 1000 CSPR buffer, 2000 sCSPR, 5000 WUSDT ($5000 stable).
-    balances: {
-      cspr: (1000n * 10n ** 9n).toString(),
-      scspr: (2000n * 10n ** 9n).toString(),
-      csprusd: (5000n * 10n ** 6n).toString(),
-    },
-    twapMicros: TWAP,
-    rate: RATE,
-    totalShares: 0n,
-    ...over,
-  };
+  return { balances: BALANCES, twapMicros: TWAP, rate: RATE, ...over };
 }
 
-describe('NAV valuation (mirrors on-chain bucket_usd)', () => {
+describe('valuation (mirrors on-chain bucket_usd)', () => {
   it('values the three buckets in micro-USD', () => {
     const b = bucketUsd(navInputs());
-    // CSPR: 1000 * $0.03 = $30 → 30_000_000 micro-USD
-    expect(b.cspr).toBe(30_000_000n);
-    // sCSPR: 2000 sCSPR * 1.05 = 2100 CSPR * $0.03 = $63 → 63_000_000
-    expect(b.scspr).toBe(63_000_000n);
-    // stable: $5000 → 5_000_000_000 micro-USD (already 6-decimal)
-    expect(b.csprusd).toBe(5_000_000_000n);
+    expect(b.cspr).toBe(30_000_000n); // 1000 * $0.03 = $30
+    expect(b.scspr).toBe(63_000_000n); // 2000 * 1.05 = 2100 CSPR * $0.03 = $63
+    expect(b.csprusd).toBe(5_000_000_000n); // $5000 (already 6-decimal)
   });
 
-  it('sums NAV and pegs the share index to 1.000000 at genesis', () => {
-    // First deposit mints shares 1:1 with micro-USD, so totalShares == totalNavUsd at genesis.
-    const totalNav = 30_000_000n + 63_000_000n + 5_000_000_000n;
-    const nav = computeNavSnapshot(navInputs({ totalShares: totalNav }));
-    expect(nav.totalNavUsd).toBe(totalNav.toString());
-    expect(nav.navPerShareMicros).toBe('1000000'); // 1.000000
+  it('totalUsd + aggregate NAV snapshot sum the buckets', () => {
+    const total = 30_000_000n + 63_000_000n + 5_000_000_000n;
+    expect(totalUsd(navInputs())).toBe(total);
+    const nav = computeNavSnapshot(navInputs());
+    expect(nav.totalNavUsd).toBe(total.toString());
+    expect(nav.balances).toEqual(BALANCES);
   });
 
-  it('share index rises when NAV outgrows supply (yield)', () => {
-    const totalNav = 30_000_000n + 63_000_000n + 5_000_000_000n;
-    // Supply minted against half the current NAV → index ≈ 2.0.
-    const nav = computeNavSnapshot(navInputs({ totalShares: totalNav / 2n }));
-    expect(nav.navPerShareMicros).toBe('2000000');
+  it('allocationBps sums to 10000', () => {
+    const a = allocationBps(navInputs());
+    expect(a.scspr + a.csprusd + a.cspr).toBe(10_000);
+    expect(a.scspr).toBe(123); // ~$63 of ~$5093
+    expect(a.csprusd).toBe(9817); // ~$5000 of ~$5093
   });
 });
 
-describe('user position', () => {
-  it('computes value, pct of pool, and the in-kind redeem slice', () => {
-    const totalNav = 30_000_000n + 63_000_000n + 5_000_000_000n;
-    const nav = computeNavSnapshot(navInputs({ totalShares: totalNav }));
-    // Account holds 25% of the pool.
-    const pos = computeUserPosition('AccountHash', totalNav / 4n, nav);
-    expect(pos.pctOfPoolBps).toBe(2500);
-    expect(pos.valueUsd).toBe((totalNav / 4n).toString());
-    // In-kind slice is 25% of every bucket.
-    expect(pos.assetBreakdown.cspr).toBe((250n * 10n ** 9n).toString());
-    expect(pos.assetBreakdown.scspr).toBe((500n * 10n ** 9n).toString());
-    expect(pos.assetBreakdown.csprusd).toBe((1250n * 10n ** 6n).toString());
+describe('user position (per-account ledger slice)', () => {
+  it('values the account from its own balances + computes its allocation', () => {
+    const pos = computeUserPosition('AccountHash', BALANCES, { twapMicros: TWAP, rate: RATE });
+    expect(pos.account).toBe('AccountHash');
+    expect(pos.valueUsd).toBe((30_000_000n + 63_000_000n + 5_000_000_000n).toString());
+    expect(pos.balances).toEqual(BALANCES);
+    expect(pos.allocBps.scspr + pos.allocBps.csprusd + pos.allocBps.cspr).toBe(10_000);
   });
 
-  it('returns a zeroed position for a non-holder', () => {
-    const nav = computeNavSnapshot(navInputs({ totalShares: 1000n }));
-    const pos = computeUserPosition('nobody', 0n, nav);
+  it('returns a zeroed position for an empty account', () => {
+    const empty: VaultBalances = { cspr: '0', scspr: '0', csprusd: '0' };
+    const pos = computeUserPosition('nobody', empty, { twapMicros: TWAP, rate: RATE });
     expect(pos.valueUsd).toBe('0');
-    expect(pos.pctOfPoolBps).toBe(0);
+    expect(pos.allocBps).toEqual({ scspr: 0, csprusd: 0, cspr: 0 });
   });
 });
 
-describe('share ledger reconstruction from events', () => {
-  it('sums deposits minus redeems per account', async () => {
-    const ledger = await buildShareLedger({
-      deposits: async () => [
-        { depositor: 'ALICE', token: null, amount: '0', sharesMinted: '100' },
-        { depositor: 'bob', token: null, amount: '0', sharesMinted: '40' },
-        { depositor: 'alice', token: null, amount: '0', sharesMinted: '60' },
-      ],
-      redeems: async () => [
-        { redeemer: 'Alice', sharesBurned: '25', csprOut: '0', scsprOut: '0', csprusdOut: '0' },
-      ],
-    });
-    expect(ledger.totalShares()).toBe(175n); // 200 minted - 25 burned
-    expect(ledger.sharesOf('alice')).toBe(135n); // 160 - 25, case-insensitive
-    expect(ledger.sharesOf('BOB')).toBe(40n);
-    expect(ledger.sharesOf('carol')).toBe(0n);
-  });
-
+describe('account key normalization', () => {
   it('normalizes 0x-prefixed and mixed-case account keys', () => {
     expect(normalizeAccount('0xABcd')).toBe('abcd');
-    const s = new StaticShareLedger(10n, { abcd: 7n });
-    expect(s.sharesOf('0xABCD')).toBe(7n);
-  });
-});
-
-describe('readPositions end-to-end', () => {
-  it('joins NAV + ledger into a snapshot and an account position', () => {
-    const totalNav = 30_000_000n + 63_000_000n + 5_000_000_000n;
-    const ledger = new StaticShareLedger(totalNav, { holder: totalNav / 2n });
-    const { nav, position } = readPositions(
-      { balances: navInputs().balances, twapMicros: TWAP, rate: RATE },
-      ledger,
-      'holder',
-    );
-    expect(nav.totalShares).toBe(totalNav.toString());
-    expect(position?.pctOfPoolBps).toBe(5000);
+    expect(normalizeAccount('  ABCD ')).toBe('abcd');
   });
 });
