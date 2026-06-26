@@ -5,7 +5,7 @@
  * the sCSPR unbonding wrinkle (in-kind redeem returns sCSPR directly — hold, unstake ~16h, or sell).
  */
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DepositorApi, TxPhase } from '../lib/depositor';
 import type { WalletApi } from '../lib/wallet';
 import { deployUrl } from '../lib/chain';
@@ -22,6 +22,28 @@ const PHASE_LABEL: Record<TxPhase, string> = {
 };
 
 function Backdrop({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Escape closes; focus moves into the dialog on open and returns to the
+  // triggering element on close (a11y floor — keyboard users aren't stranded).
+  useEffect(() => {
+    const prevFocus = document.activeElement as HTMLElement | null;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    dialogRef.current
+      ?.querySelector<HTMLElement>('input, button, [href], [tabindex]')
+      ?.focus();
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      prevFocus?.focus?.();
+    };
+  }, [onClose]);
+
   return (
     <div
       onClick={onClose}
@@ -37,6 +59,9 @@ function Backdrop({ onClose, children }: { onClose: () => void; children: React.
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         className="card"
         style={{ width: 380, maxWidth: '92vw', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}
@@ -47,13 +72,39 @@ function Backdrop({ onClose, children }: { onClose: () => void; children: React.
   );
 }
 
+/** Map a raw chain/wallet error to a plain-language problem + a suggested fix. */
+function explainTxError(raw: string | null): { problem: string; fix: string } {
+  const e = (raw ?? '').toLowerCase();
+  if (/reject|cancel|denied|declined/.test(e))
+    return {
+      problem: 'You declined the signature in your wallet.',
+      fix: 'Reopen your wallet and approve the transaction to continue.',
+    };
+  if (/insufficient|not enough|balance|out of gas|funds/.test(e))
+    return {
+      problem: "Your account can't cover the amount plus the network fee.",
+      fix: 'Lower the amount or top up CSPR, then try again.',
+    };
+  if (/network|rpc|fetch|timeout|timed out|proxy_caller|\b(429|5\d\d)\b/.test(e))
+    return {
+      problem: "Couldn't reach the Testnet node.",
+      fix: 'Check your connection and try again in a moment.',
+    };
+  return {
+    problem: raw || 'The transaction failed.',
+    fix: 'Try again; if it keeps failing, reset the demo and retry.',
+  };
+}
+
 function PhaseStepper({ tx, hash }: { tx: DepositorApi['tx']; hash: string | null }) {
   if (tx.phase === 'idle') return null;
   if (tx.phase === 'error') {
+    const { problem, fix } = explainTxError(tx.error);
     return (
       <div style={{ marginTop: 12, padding: '8px 10px', background: 'var(--coral-dim)', borderRadius: 'var(--r-ctl)' }}>
         <span className="pill tone-coral" style={{ fontSize: 11 }}>{PHASE_LABEL.error}</span>
-        <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--text-dim)' }}>{tx.error}</p>
+        <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text)' }}>{problem}</p>
+        <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-dim)' }}>{fix}</p>
       </div>
     );
   }
