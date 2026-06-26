@@ -26,30 +26,11 @@ export default function Page() {
   const x402Active = loop.stage === 'perceive';
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateAreas: `"top top top" "left center right"`,
-        gridTemplateColumns: 'minmax(300px, 340px) minmax(0, 1fr) minmax(320px, 380px)',
-        gridTemplateRows: '52px minmax(0, 1fr)',
-        height: '100vh',
-        gap: 14,
-        padding: '0 14px 14px',
-      }}
-    >
+    <div className="app-grid">
       <TopBar loop={loop} wallet={wallet} />
 
       {/* Left rail — state & trust (quiet, slow-changing). */}
-      <div
-        style={{
-          gridArea: 'left',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 14,
-          overflowY: 'auto',
-          paddingTop: 14,
-        }}
-      >
+      <div className="app-rail" style={{ gridArea: 'left' }}>
         <AllocationPanel
           alloc={loop.alloc}
           targetBps={loop.targetBps}

@@ -48,6 +48,17 @@
   box-sizing: border-box;
 }
 
+/* Visible focus ring for keyboard users on every interactive element (a11y floor). */
+:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+  border-radius: var(--r-ctl);
+}
+/* Pointer interactions shouldn't paint the ring — keyboard only. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
 html,
 body {
   margin: 0;
@@ -77,6 +88,49 @@ body {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+/* App shell — three-zone command center (design.md). Collapses to a single
+   stacked column below ~960px so the dashboard stays usable on narrow screens. */
+.app-grid {
+  display: grid;
+  grid-template-areas: 'top top top' 'left center right';
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr) minmax(320px, 380px);
+  grid-template-rows: 52px minmax(0, 1fr);
+  height: 100vh;
+  gap: 14px;
+  padding: 0 14px 14px;
+}
+.app-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding-top: 14px;
+}
+
+@media (max-width: 960px) {
+  .app-grid {
+    grid-template-areas: 'top' 'left' 'center' 'right';
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 52px auto auto auto;
+    height: auto;
+    min-height: 100vh;
+  }
+  /* On a stacked layout the rails scroll with the page, not within themselves. */
+  .app-rail {
+    overflow-y: visible;
+  }
+}
+
+/* Hide secondary chrome on narrow viewports to keep the masthead uncluttered. */
+.hide-narrow {
+  display: inline;
+}
+@media (max-width: 1180px) {
+  .hide-narrow {
+    display: none;
+  }
 }
 
 /* Cards */
@@ -290,4 +344,17 @@ body {
 
 a {
   color: var(--info);
+}
+
+/* Respect users who ask for less motion — kill the looping/entrance animations
+   (pulse, ticking, snap-in) and all transitions. State still reads via color. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

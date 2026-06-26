@@ -109,6 +109,12 @@ export function TopBar({ loop, wallet }: { loop: LoopApi; wallet: WalletApi }) {
             </span>
           </span>
         </span>
+        <span
+          className="hide-narrow"
+          style={{ fontSize: 11, color: 'var(--text-dim)', maxWidth: '30ch', lineHeight: 1.25 }}
+        >
+          Autonomous on-chain treasury — acts under hard limits, proves every move.
+        </span>
         <span style={{ height: 20, width: 1, background: 'var(--border-strong)' }} />
         <LoopNav stage={stage} />
       </div>
