@@ -7,7 +7,7 @@
  */
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AllocationBps } from '@sentinel/shared';
+import type { AllocationBps, Regime } from '@sentinel/shared';
 import { ScenarioSource } from './scenario';
 import type { Cycle, ExecStatus, LoopStage, ScenarioKind, X402State } from './types';
 
@@ -22,10 +22,43 @@ export interface LoopState {
   showDeployHash: boolean;
   alloc: AllocationBps;
   targetBps: { scspr: number; csprusd: number };
+  regime: Regime; // resting regime (last classified) — drives the allocation pill
+  twapUsd: number; // CSPR/USD TWAP shown in the allocation card
+  managedUsd: number; // total USD across the two managed buckets (excludes buffer)
   daySpentUsd: number; // USD micros
   x402: X402State;
   history: Cycle[]; // newest first — the receipt feed + verify artifacts
   freshReceiptId: string | null; // drives the snap-in animation
+}
+
+/** Initial loop state: a resting 60/40 book plus a short, fully-verifiable audit trail. */
+function buildInitial(source: ScenarioSource): LoopState {
+  const history = source.seed([
+    { scenario: 'calm', agoMs: 2.4 * 3600e3 },
+    { scenario: 'shock', agoMs: 2.0 * 3600e3 },
+    { scenario: 'calm', agoMs: 47 * 60e3 },
+  ]);
+  const rest = source.restingView();
+  const daySpentUsd = history.reduce((sum, c) => sum + Number(c.notionalUsd), 0);
+  return {
+    stage: 'idle',
+    running: false,
+    paused: false,
+    cycle: null,
+    revealedTurns: 0,
+    consensus: false,
+    execStatus: 'idle',
+    showDeployHash: false,
+    alloc: rest.alloc,
+    targetBps: { scspr: rest.regime === 'Calm' ? 6000 : 2000, csprusd: rest.regime === 'Calm' ? 4000 : 8000 },
+    regime: rest.regime,
+    twapUsd: rest.twapUsd,
+    managedUsd: rest.managedUsd,
+    daySpentUsd,
+    x402: { paidPulls: history.length, csprSpent: Number((history.length * 0.7).toFixed(1)), lastSettleTx: history[0]?.x402Spend.settleTx ?? null },
+    history,
+    freshReceiptId: null,
+  };
 }
 
 export interface LoopApi extends LoopState {
@@ -53,22 +86,7 @@ export function useLoop(): LoopApi {
   if (!sourceRef.current) sourceRef.current = new ScenarioSource();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const [state, setState] = useState<LoopState>(() => ({
-    stage: 'idle',
-    running: false,
-    paused: false,
-    cycle: null,
-    revealedTurns: 0,
-    consensus: false,
-    execStatus: 'idle',
-    showDeployHash: false,
-    alloc: sourceRef.current!.currentAllocBps(),
-    targetBps: { scspr: 6000, csprusd: 4000 },
-    daySpentUsd: 0,
-    x402: { paidPulls: 0, csprSpent: 0, lastSettleTx: null },
-    history: [],
-    freshReceiptId: null,
-  }));
+  const [state, setState] = useState<LoopState>(() => buildInitial(sourceRef.current!));
 
   const clearTimers = useCallback(() => {
     timers.current.forEach(clearTimeout);
@@ -102,6 +120,8 @@ export function useLoop(): LoopApi {
             showDeployHash: false,
             revealedTurns: 1,
             targetBps: cycle.targetBps,
+            regime: cycle.regime,
+            twapUsd: cycle.snapshot.csprUsdTwap,
           }),
         );
 
@@ -134,6 +154,7 @@ export function useLoop(): LoopApi {
           setState((cur) => ({
             ...cur,
             alloc: cycle.postAllocBps,
+            managedUsd: sourceRef.current!.restingView().managedUsd,
             daySpentUsd: cur.daySpentUsd + Number(cycle.notionalUsd),
             history: [cycle, ...cur.history],
             freshReceiptId: cycle.id,
@@ -170,22 +191,7 @@ export function useLoop(): LoopApi {
   const reset = useCallback(() => {
     clearTimers();
     sourceRef.current = new ScenarioSource();
-    setState({
-      stage: 'idle',
-      running: false,
-      paused: false,
-      cycle: null,
-      revealedTurns: 0,
-      consensus: false,
-      execStatus: 'idle',
-      showDeployHash: false,
-      alloc: sourceRef.current!.currentAllocBps(),
-      targetBps: { scspr: 6000, csprusd: 4000 },
-      daySpentUsd: 0,
-      x402: { paidPulls: 0, csprSpent: 0, lastSettleTx: null },
-      history: [],
-      freshReceiptId: null,
-    });
+    setState(buildInitial(sourceRef.current));
   }, [clearTimers]);
 
   return { ...state, inject, togglePause, reset };

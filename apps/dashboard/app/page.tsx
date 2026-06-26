@@ -50,6 +50,15 @@ export default function Page() {
           paddingTop: 14,
         }}
       >
+        <AllocationPanel
+          alloc={loop.alloc}
+          targetBps={loop.targetBps}
+          regime={loop.regime}
+          twapUsd={loop.twapUsd}
+          managedUsd={loop.managedUsd}
+        />
+        <GuardrailPanel daySpentUsd={loop.daySpentUsd} paused={loop.paused} />
+        <X402Meter x402={loop.x402} active={x402Active} />
         <PositionPanel
           wallet={wallet}
           depositor={depositor}
@@ -62,13 +71,6 @@ export default function Page() {
             setModal('withdraw');
           }}
         />
-        <AllocationPanel alloc={loop.alloc} targetBps={loop.targetBps} />
-        <GuardrailPanel
-          daySpentUsd={loop.daySpentUsd}
-          paused={loop.paused}
-          onTogglePause={loop.togglePause}
-        />
-        <X402Meter x402={loop.x402} active={x402Active} />
       </div>
 
       {/* Center — reasoning → action (the protagonist; dims when paused). */}

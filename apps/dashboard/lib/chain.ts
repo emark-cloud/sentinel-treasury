@@ -37,9 +37,8 @@ export const CONTRACTS = {
 /** The contract whitelist the agent may target (guardrail §11). */
 export const WHITELIST: { label: string; hash: string }[] = [
   { label: 'CSPR.trade Router', hash: CONTRACTS.router },
-  { label: 'Wise Lending (sCSPR)', hash: CONTRACTS.staking },
-  { label: 'WUSDT (stable)', hash: CONTRACTS.wusdt },
-  { label: 'Styks price feed', hash: CONTRACTS.styks },
+  { label: 'Wise Lending Staking', hash: CONTRACTS.staking },
+  { label: 'WUSDT (stable refuge)', hash: CONTRACTS.wusdt },
 ];
 
 /** Associated-key weights from the agent-account hardening (§4.3). */
@@ -50,14 +49,18 @@ export const KEY_WEIGHTS = {
   keyManagementThreshold: 3,
 } as const;
 
-/** Conservative demo policy the vault was init'd with (USD caps in micros, 1e6). */
+/** Demo policy the dashboard renders (USD caps in micros, 1e6). The authoritative caps live
+ * on-chain in the WASM; these drive the demo's action sizing and the Guardrails panel display. */
 export const POLICY: PolicyConfig = {
-  perActionCapUsd: '500000000', // $500
-  dailyCapUsd: '2000000000', // $2,000
-  maxSlippageBps: 150, // 1.5%
-  minScsprBps: 1500, // 15%
-  maxScsprBps: 7000, // 70%
+  perActionCapUsd: '5000000000', // $5,000
+  dailyCapUsd: '20000000000', // $20,000
+  maxSlippageBps: 100, // 1%
+  minScsprBps: 2000, // 20%
+  maxScsprBps: 6000, // 60%
 };
+
+/** x402 machine-payment budget (CSPR) — hourly ceiling shown on the paid-pulls meter. */
+export const X402_HOURLY_CAP_CSPR = 10;
 
 const EXPLORER = 'https://testnet.cspr.live';
 

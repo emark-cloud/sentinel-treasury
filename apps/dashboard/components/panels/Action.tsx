@@ -36,7 +36,10 @@ export function ActionCard({
       }}
     >
       <h3 className="card-title">
-        Action · execution
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          Action
+          <span className="label">execute_rebalance</span>
+        </span>
         {cycle && active && (
           <span
             className={execStatus === 'finalized' ? 'pill tone-green' : 'pill tone-info'}
@@ -48,7 +51,16 @@ export function ActionCard({
       </h3>
 
       {!cycle || !active ? (
-        <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>Awaiting decision…</div>
+        <div
+          style={{
+            fontSize: 13,
+            color: 'var(--text-faint)',
+            textAlign: 'center',
+            padding: '24px 0',
+          }}
+        >
+          No transaction in flight
+        </div>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 12 }}>

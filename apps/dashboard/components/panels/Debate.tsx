@@ -11,6 +11,12 @@ const ROLE_TONE: Record<Role, string> = {
   Treasury: 'var(--green)',
 };
 
+const AGENTS: { role: Role; tone: string }[] = [
+  { role: 'Scout', tone: 'var(--info)' },
+  { role: 'Risk', tone: 'var(--coral)' },
+  { role: 'Treasury', tone: 'var(--green)' },
+];
+
 function TurnShell({
   role,
   tag,
@@ -165,7 +171,10 @@ export function DebatePanel({
   return (
     <section className="card" style={{ display: 'flex', flexDirection: 'column' }}>
       <h3 className="card-title">
-        Deliberation
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          Deliberation
+          <span className="label">Scout · Risk · Treasury</span>
+        </span>
         {cycle && consensus && <SourceFlag consensus={consensus} source={cycle.decision.source} />}
       </h3>
 
@@ -174,14 +183,43 @@ export function DebatePanel({
           style={{
             flex: 1,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'var(--text-faint)',
-            fontSize: 13,
+            gap: 14,
             minHeight: 220,
           }}
         >
-          Idle — inject a scenario to start a cycle.
+          <div style={{ display: 'flex', gap: 14 }}>
+            {AGENTS.map((a) => (
+              <div
+                key={a.role}
+                title={a.role}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 15,
+                  fontWeight: 500,
+                  color: a.tone,
+                  background: 'var(--surface-2)',
+                  border: `1px solid ${a.tone}`,
+                  opacity: 0.85,
+                }}
+              >
+                {a.role[0]}
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>Agents idle</div>
+            <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>
+              Inject a scenario to start a deliberation
+            </div>
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

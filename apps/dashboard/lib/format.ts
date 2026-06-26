@@ -56,3 +56,14 @@ export function fmtClock(ts: number): string {
     second: '2-digit',
   });
 }
+
+/** Relative "47m ago" / "2h ago" stamp for the append-only receipt feed. */
+export function fmtAgo(ts: number, now: number = Date.now()): string {
+  const secs = Math.max(0, Math.round((now - ts) / 1000));
+  if (secs < 45) return 'just now';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}

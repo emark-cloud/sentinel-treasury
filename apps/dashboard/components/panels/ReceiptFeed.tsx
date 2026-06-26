@@ -1,25 +1,50 @@
-/** Receipt feed (design.md §5.6) — append-only, newest on top, one-click verify. */
+/** Receipt feed (design.md §5.6) — append-only, newest on top, every entry self-verifies. */
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Cycle } from '../../lib/types';
-import { HashChip, RegimePill, ResultBadge } from '../atoms';
+import { ActionChip, HashChip, ResultBadge } from '../atoms';
 import { deployUrl } from '../../lib/chain';
-import { fmtClock } from '../../lib/format';
+import { fmtAgo, fmtBps, fmtPrice, fmtUsd } from '../../lib/format';
 import { verifyCycle, type VerifyResult } from '../../lib/verify';
+
+function MetaRow({
+  left,
+  right,
+  dim,
+}: {
+  left: React.ReactNode;
+  right: React.ReactNode;
+  dim?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        fontSize: 11,
+        color: dim ? 'var(--text-faint)' : 'var(--text-dim)',
+      }}
+    >
+      <span>{left}</span>
+      <span>{right}</span>
+    </div>
+  );
+}
 
 function ReceiptRow({ cycle, fresh }: { cycle: Cycle; fresh: boolean }) {
   const [result, setResult] = useState<VerifyResult | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   const r = cycle.receipt;
+  const skipped = r.result === 'Skipped';
+  const twap = Number(r.csprUsdTwap) / 1e5;
+  const num = r.actionId.replace(/^\D+/, '');
 
-  const runVerify = () => {
-    setBusy(true);
-    // Real blake2b recompute; defer a tick so the "verifying…" state paints.
-    setTimeout(() => {
-      setResult(verifyCycle(cycle));
-      setBusy(false);
-    }, 220);
-  };
+  // Self-verify on mount — a real blake2b recompute over the canonical snapshot/decision.
+  useEffect(() => {
+    const t = setTimeout(() => setResult(verifyCycle(cycle)), 180);
+    return () => clearTimeout(t);
+  }, [cycle]);
 
   return (
     <div
@@ -31,60 +56,79 @@ function ReceiptRow({ cycle, fresh }: { cycle: Cycle; fresh: boolean }) {
         padding: '10px 12px',
       }}
     >
-      <div
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ResultBadge result={r.result} />
           <span className="mono" style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-            {r.actionId}
+            #{num}
           </span>
+          <ActionChip kind={r.actionKind} />
         </div>
-        <span className="mono" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
-          {fmtClock(Number(r.timestamp))}
-        </span>
+        <ResultBadge result={r.result} />
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0' }}>
-        <RegimePill regime={r.regime} />
-        <span className="pill tone-neutral" style={{ fontSize: 10 }}>
-          {r.actionKind}
-        </span>
-        <span className="mono" style={{ fontSize: 11, marginLeft: 'auto' }}>
-          ${(Number(r.notionalUsd) / 1e6).toFixed(0)}
-        </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+        <MetaRow
+          left={
+            <span>
+              alloc{' '}
+              <span className="mono" style={{ color: 'var(--text-dim)' }}>
+                {fmtBps(r.preAllocBps.scspr)}→{fmtBps(r.postAllocBps.scspr)}
+              </span>{' '}
+              sCSPR
+            </span>
+          }
+          right={
+            <span className="mono" style={{ color: skipped ? 'var(--text-faint)' : 'var(--text)' }}>
+              {skipped ? '—' : fmtUsd(Number(r.notionalUsd) / 1e6)}
+            </span>
+          }
+        />
+        <MetaRow
+          dim
+          left={<span className="mono">twap {fmtPrice(twap)}</span>}
+          right={<span>{fmtAgo(Number(r.timestamp))}</span>}
+        />
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
-        <Line k="perception" hash={r.perceptionHash} />
-        <Line k="decision" hash={r.decisionHash} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: 'var(--text-faint)' }}>deploy</span>
-          <HashChip hash={r.deployHash} href={deployUrl(r.deployHash)} />
-        </div>
-      </div>
-
-      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+          marginTop: 9,
+        }}
+      >
+        <HashChip hash={r.deployHash} href={deployUrl(r.deployHash)} />
         <button
-          className="btn"
-          onClick={runVerify}
-          disabled={busy}
-          style={{ padding: '4px 10px', fontSize: 11 }}
+          onClick={() => setOpen((o) => !o)}
+          title="Show hash checks"
+          style={{
+            background: 'none',
+            border: 0,
+            cursor: 'pointer',
+            padding: 0,
+            font: 'inherit',
+          }}
         >
-          {busy ? 'verifying…' : result ? '↻ re-verify' : '✓ verify ↗'}
+          {result ? (
+            <span
+              className={result.ok ? 'pill tone-green' : 'pill tone-coral'}
+              style={{ fontSize: 10 }}
+            >
+              <span className="dot" />
+              {result.ok ? 'verified' : 'MISMATCH'}
+            </span>
+          ) : (
+            <span className="pill tone-neutral mono" style={{ fontSize: 10 }}>
+              verifying…
+            </span>
+          )}
         </button>
-        {result && (
-          <span
-            className={result.ok ? 'pill tone-green' : 'pill tone-coral'}
-            style={{ fontSize: 10 }}
-          >
-            {result.ok ? 'hashes match' : 'MISMATCH'}
-          </span>
-        )}
       </div>
 
-      {result && (
-        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {open && result && (
+        <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 5 }}>
           {result.checks.map((c) => (
             <div key={c.label} style={{ fontSize: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -104,30 +148,22 @@ function ReceiptRow({ cycle, fresh }: { cycle: Cycle; fresh: boolean }) {
   );
 }
 
-function Line({ k, hash }: { k: string; hash: string }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ color: 'var(--text-faint)' }}>{k}</span>
-      <HashChip hash={hash} />
-    </div>
-  );
-}
-
 export function ReceiptFeed({ history, freshId }: { history: Cycle[]; freshId: string | null }) {
   return (
     <section className="card" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <h3 className="card-title">
-        Receipts · AuditLog
-        <span className="label">append-only · {history.length}</span>
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          Receipts
+          <span className="label">append-only audit log</span>
+        </span>
+        <span className="pill tone-green" style={{ fontSize: 10 }}>
+          <span className="dot" />
+          {history.length} on-chain
+        </span>
       </h3>
       {history.length === 0 ? (
         <div
-          style={{
-            fontSize: 12,
-            color: 'var(--text-faint)',
-            padding: '20px 0',
-            textAlign: 'center',
-          }}
+          style={{ fontSize: 12, color: 'var(--text-faint)', padding: '20px 0', textAlign: 'center' }}
         >
           No receipts yet. Each proven cycle appends one here.
         </div>

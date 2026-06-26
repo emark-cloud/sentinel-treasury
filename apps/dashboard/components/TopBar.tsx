@@ -1,8 +1,9 @@
-/** Persistent top bar — loop stepper + scenario (demo) + Pause + Testnet tag (design.md §3, §5.2, §5.9). */
+/** Persistent top bar — loop nav + scenario (demo) + Pause + Testnet tag (design.md §3, §5.2, §5.9). */
 'use client';
 import { LOOP_STAGES, type LoopStage } from '../lib/types';
 import type { LoopApi } from '../lib/useLoop';
 import type { WalletApi } from '../lib/wallet';
+import { RegimePill } from './atoms';
 import { truncHash } from '../lib/format';
 
 function WalletChip({ wallet }: { wallet: WalletApi }) {
@@ -48,46 +49,41 @@ function stageStatus(
   return 'idle';
 }
 
-function LoopStepper({ stage }: { stage: LoopStage }) {
+/** Loop nav rendered as tabs; the active stage underlines, completed stages go green. */
+function LoopNav({ stage }: { stage: LoopStage }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      {LOOP_STAGES.map((st, i) => {
+    <nav style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {LOOP_STAGES.map((st) => {
         const status = stageStatus(stage, st);
         const color =
-          status === 'active'
-            ? 'var(--info)'
-            : status === 'done'
-              ? 'var(--green)'
-              : 'var(--text-faint)';
+          status === 'active' ? 'var(--info)' : status === 'done' ? 'var(--green)' : 'var(--text-faint)';
         return (
-          <div key={st} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span
-                className={status === 'active' ? 'dot pulse' : 'dot'}
-                style={{ color, width: 7, height: 7 }}
-              />
-              <span
-                style={{
-                  fontSize: 12,
-                  color: status === 'idle' ? 'var(--text-faint)' : 'var(--text)',
-                  fontWeight: status === 'active' ? 500 : 400,
-                }}
-              >
-                {STAGE_LABEL[st]}
-              </span>
-            </span>
-            {i < LOOP_STAGES.length - 1 && (
-              <span style={{ color: 'var(--text-faint)', fontSize: 11 }}>›</span>
+          <span
+            key={st}
+            style={{
+              fontSize: 12,
+              padding: '4px 8px',
+              color: status === 'idle' ? 'var(--text-faint)' : 'var(--text)',
+              fontWeight: status === 'active' ? 500 : 400,
+              borderBottom: `2px solid ${status === 'active' ? color : 'transparent'}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+            }}
+          >
+            {status !== 'idle' && (
+              <span className={status === 'active' ? 'dot pulse' : 'dot'} style={{ color, width: 6, height: 6 }} />
             )}
-          </div>
+            {STAGE_LABEL[st]}
+          </span>
         );
       })}
-    </div>
+    </nav>
   );
 }
 
 export function TopBar({ loop, wallet }: { loop: LoopApi; wallet: WalletApi }) {
-  const { stage, running, paused, inject, togglePause } = loop;
+  const { stage, running, paused, regime, inject, togglePause, reset } = loop;
   const busy = running || paused;
   return (
     <header
@@ -103,16 +99,22 @@ export function TopBar({ loop, wallet }: { loop: LoopApi; wallet: WalletApi }) {
         backdropFilter: 'blur(8px)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}>
-          <span style={{ color: 'var(--green)', fontSize: 15 }}>◆</span> Sentinel Treasury
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span style={{ color: 'var(--green)', fontSize: 15 }}>◆</span>
+          <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.05 }}>
+            <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '-0.01em' }}>Sentinel</span>
+            <span style={{ fontSize: 10, color: 'var(--text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Treasury
+            </span>
+          </span>
         </span>
-        <span style={{ height: 18, width: 1, background: 'var(--border-strong)' }} />
-        <LoopStepper stage={stage} />
+        <span style={{ height: 20, width: 1, background: 'var(--border-strong)' }} />
+        <LoopNav stage={stage} />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {/* Scenario controls — visibly tagged demo, styled apart (design.md §8). */}
+        {/* Scenario controls — visibly tagged demo, styled apart (design.md §8, spec §15.3). */}
         <div
           style={{
             display: 'flex',
@@ -125,26 +127,22 @@ export function TopBar({ loop, wallet }: { loop: LoopApi; wallet: WalletApi }) {
           }}
           title="Simulated market event — only the trigger is injected; everything downstream is real on Testnet"
         >
-          <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 500 }}>
-            demo ▸ scenario
-          </span>
-          <button
-            className="btn"
-            disabled={busy}
-            onClick={() => inject('shock')}
-            style={{ padding: '4px 9px' }}
-          >
+          <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 500 }}>demo ▸ scenario</span>
+          <RegimePill regime={regime} />
+          <button className="btn" disabled={busy} onClick={() => inject('shock')} style={{ padding: '4px 9px' }}>
             ⚡ Price shock
           </button>
-          <button
-            className="btn"
-            disabled={busy}
-            onClick={() => inject('calm')}
-            style={{ padding: '4px 9px' }}
-          >
-            ☼ Calm
+          <button className="btn" disabled={busy} onClick={() => inject('crunch')} style={{ padding: '4px 9px' }}>
+            ☷ Liquidity crunch
+          </button>
+          <button className="btn" disabled={busy} onClick={() => inject('calm')} style={{ padding: '4px 9px' }}>
+            ☼ Calm returns
           </button>
         </div>
+
+        <button className="btn" onClick={reset} disabled={running} title="Reset the demo to a fresh resting book" style={{ padding: '6px 10px' }}>
+          ↻ Reset
+        </button>
 
         <button
           className={paused ? 'btn btn-danger' : 'btn'}

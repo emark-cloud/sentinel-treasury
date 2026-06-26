@@ -14,7 +14,7 @@ export const LOOP_STAGES: Exclude<LoopStage, 'idle'>[] = ['perceive', 'decide', 
 
 export type ExecStatus = 'idle' | 'building' | 'signing' | 'submitted' | 'finalized' | 'reverted';
 
-export type ScenarioKind = 'shock' | 'calm';
+export type ScenarioKind = 'shock' | 'crunch' | 'calm';
 
 /** A fully-resolved cycle. The loop controller reveals it stage by stage. */
 export interface Cycle {

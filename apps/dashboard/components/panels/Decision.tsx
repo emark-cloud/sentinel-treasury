@@ -19,8 +19,22 @@ export function DecisionCard({ cycle, show }: { cycle: Cycle | null; show: boole
   if (!cycle || !show) {
     return (
       <section className="card" style={{ opacity: 0.5 }}>
-        <h3 className="card-title">Decision</h3>
-        <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>Awaiting consensus…</div>
+        <h3 className="card-title">
+          <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            Decision
+            <span className="label">consensus → execution</span>
+          </span>
+        </h3>
+        <div
+          style={{
+            fontSize: 13,
+            color: 'var(--text-faint)',
+            textAlign: 'center',
+            padding: '24px 0',
+          }}
+        >
+          Awaiting deliberation outcome
+        </div>
       </section>
     );
   }
