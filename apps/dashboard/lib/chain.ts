@@ -14,9 +14,12 @@ export const NODE_RPC_URL =
 /** The vault's share token ticker (ERC-4626-style: 1 share ≈ 1 micro-USD at genesis). */
 export const SHARE_SYMBOL = 'stVLT';
 
-/** Gas (motes) for the depositor-facing entry points. CSPR deposit/redeem are simple calls. */
+/** Gas (motes) for the depositor-facing entry points. */
 export const GAS = {
-  deposit: 3_500_000_000, // 3.5 CSPR
+  // deposit_cspr is payable, so it runs through Odra's ~185 KB proxy_caller session WASM (loads the
+  // module + two purse transfers + the vault call) — far costlier than a plain call. Tune if a live
+  // deposit ever returns "Out of gas".
+  deposit: 15_000_000_000, // 15 CSPR (proxy_caller session)
   approve: 1_500_000_000, // 1.5 CSPR
   redeem: 5_000_000_000, // 5 CSPR (three in-kind transfer legs)
 } as const;

@@ -18,6 +18,9 @@ next-env.d.ts
 target/
 wasm/
 *.wasm
+# …except Odra's vendored proxy_caller shim: a runtime asset the dashboard ships to fund the
+# payable deposit_cspr call (fetched at /proxy_caller.wasm), not a build artifact.
+!apps/dashboard/public/proxy_caller.wasm
 **/*.rs.bk
 
 # OS / editor
