@@ -14,10 +14,12 @@
  */
 import {
   computeNavSnapshot,
+  computeUserPosition,
   type NavSnapshot,
   type UserPosition,
   type VaultBalances,
 } from '@sentinel/shared';
+import { readAccountLedger, readVaultNativeMotes } from './ledgerReader';
 
 interface ServerConfig {
   baseUrl: string;
@@ -29,6 +31,8 @@ interface ServerConfig {
   stablePackage: string;
   twapMicros: bigint;
   rate: { stakedCspr: bigint; totalSupply: bigint };
+  /** Public node JSON-RPC endpoint for direct on-chain reads (no token needed). */
+  nodeRpcUrl: string;
 }
 
 function readConfig(): ServerConfig | null {
@@ -50,7 +54,32 @@ function readConfig(): ServerConfig | null {
       stakedCspr: BigInt(process.env.DASHBOARD_SCSPR_STAKED ?? '1052'),
       totalSupply: BigInt(process.env.DASHBOARD_SCSPR_SUPPLY ?? '1000'),
     },
+    nodeRpcUrl:
+      process.env.DASHBOARD_RPC_URL ??
+      process.env.NEXT_PUBLIC_NODE_RPC_URL ??
+      'https://node.testnet.casper.network/rpc',
   };
+}
+
+/**
+ * Resolve the vault's **package** hash to its current active **contract** hash via CSPR.cloud
+ * (`/contracts?contract_package_hash=…`), choosing the highest enabled version — the upgradable
+ * vault's active hash changes per redeploy, but the package hash in env is stable. Mirrors the
+ * orchestrator's `CsprCloudClient.resolveContractHash`.
+ */
+let contractHashCache: { pkg: string; hash: string } | null = null;
+async function resolveVaultContractHash(cfg: ServerConfig): Promise<string> {
+  if (contractHashCache?.pkg === cfg.vaultContractHash) return contractHashCache.hash;
+  const records = await getData<{ contract_hash: string; contract_version: number; is_disabled?: boolean }[]>(
+    cfg,
+    `/contracts?contract_package_hash=${cfg.vaultContractHash}`,
+  );
+  const active = (records ?? [])
+    .filter((r) => !r.is_disabled)
+    .sort((a, b) => b.contract_version - a.contract_version)[0];
+  if (!active?.contract_hash) throw new Error(`no active contract for package ${cfg.vaultContractHash}`);
+  contractHashCache = { pkg: cfg.vaultContractHash, hash: active.contract_hash };
+  return active.contract_hash;
 }
 
 async function getData<T>(cfg: ServerConfig, path: string): Promise<T> {
@@ -64,8 +93,12 @@ async function getData<T>(cfg: ServerConfig, path: string): Promise<T> {
 }
 
 async function readBalances(cfg: ServerConfig): Promise<VaultBalances> {
-  const native = getData<{ balance?: string }>(cfg, `/accounts/${cfg.vaultHash}`)
-    .then((d) => BigInt(d?.balance ?? '0'))
+  // Native CSPR: the vault is a legacy `Contract`, so its CSPR sits in `__contract_main_purse`,
+  // which CSPR.cloud's `/accounts/{hash}` does not expose (it reports `null`). Read the purse from
+  // the node instead. CEP-18 holdings, by contrast, are keyed by the vault's package hash (Odra's
+  // `self_address()` is `Address::Contract(package)`), which the `ft-token-ownership` endpoint reads.
+  const native = resolveVaultContractHash(cfg)
+    .then((contractHash) => readVaultNativeMotes(cfg.nodeRpcUrl, contractHash))
     .catch(() => 0n);
   const cep18 = (pkg: string) =>
     getData<{ balance?: string }[]>(cfg, `/accounts/${cfg.vaultHash}/ft-token-ownership?contract_package_hash=${pkg}`)
@@ -88,15 +121,18 @@ export async function readVaultSnapshot(): Promise<{ live: boolean; nav: NavSnap
 
 /**
  * A single account's position (its own ledger slice). In the multi-tenant vault this comes from the
- * contract's `account_balances(account)` view — a per-account on-chain read, not the CSPR.cloud
- * aggregate. That node-RPC view query is the one piece wired against the live deploy (see the
- * redeploy/verification step); until then live mode reports the account as not-yet-loaded
- * (`position: null`) rather than guessing, and the UI keeps the aggregate TVL it can read.
+ * contract's per-account ledger (`account_balances(account)`) — read directly from on-chain Odra
+ * storage by JSON-RPC (see `ledgerReader`), not from the CSPR.cloud aggregate. Valuation (USD value
+ * + allocation) is the shared pure math, kept in lock-step with the on-chain `account_value_usd` /
+ * `compute_alloc`. Returns `position: null` only when the account has no chain identity (demo key)
+ * or the read fails — a real account with no deposits reads as an all-zero slice.
  */
-export async function readPositionFor(_account: string): Promise<{ live: boolean; position: UserPosition | null }> {
+export async function readPositionFor(account: string): Promise<{ live: boolean; position: UserPosition | null }> {
   const cfg = readConfig();
   if (!cfg) return { live: false, position: null };
-  // TODO(post-deploy): query the vault's `account_balances`/`account_value_usd` views by RPC and
-  // map to UserPosition via `computeUserPosition`.
-  return { live: true, position: null };
+  const contractHash = await resolveVaultContractHash(cfg);
+  const balances = await readAccountLedger(cfg.nodeRpcUrl, contractHash, account);
+  if (!balances) return { live: true, position: null };
+  const position = computeUserPosition(account, balances, { twapMicros: cfg.twapMicros, rate: cfg.rate });
+  return { live: true, position };
 }
