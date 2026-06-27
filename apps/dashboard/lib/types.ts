@@ -36,6 +36,8 @@ export interface Cycle {
   receipt: Receipt;
   /** One x402 paid premium pull happened this cycle. */
   x402Spend: { amountCspr: number; settleTx: string };
+  /** True for a real autonomous cycle from the runner; false/absent for a demo injection. */
+  live?: boolean;
 }
 
 /** x402 budget meter state (design.md §5.8). */

@@ -12,6 +12,14 @@ The dashboard has exactly one job: make a non-expert *instantly* see that an AI 
 
 Everything below is in service of that. The agent is the protagonist; the UI is its stage. When a choice is unclear, pick the option that makes the perceive→decide→act→prove story more legible.
 
+> **Production posture (current).** The protagonist is now driven by the **autonomous runner's real
+> cycles**, not by a demo click: on load the dashboard seeds the receipt feed from the runner's recent
+> cycles + on-chain receipts and subscribes to its SSE stream, so the center column animates whenever
+> the agent actually runs (the loop header shows live status — running / last run / next run). The
+> scenario trigger is demoted to a **collapsed "Demo ▾" menu** (§5.9 / §8) — clearly tagged, still
+> honest, but a secondary control rather than the only source of motion. When no runner is configured
+> (`RUNNER_API_URL` unset) the UI falls back to the client-side demo source, tagged `demo`.
+
 "Minimalist" here does **not** mean few elements — there are nine panels of dense live data. It means **ruthless hierarchy**: one protagonist on screen at a time, everything else quiet.
 
 ---
@@ -156,11 +164,15 @@ Each panel: what it shows · data source (from the technical spec) · reference 
 - **Reference:** usage-meter / credits-balance patterns; keep it small.
 - **States:** idle; paid pull in progress; budget guard tripped (amber).
 
-### 5.9 Scenario controls `(top bar — demo only)`
-- **Shows:** inject a labelled price-shock / liquidity-crunch to trigger a cycle.
-- **Data:** scenario injection into the perception layer.
+### 5.9 Demo menu `(top bar — collapsed, optional trigger)`
+- **Shows:** a collapsed **"Demo ▾"** button (dashed-amber) that opens a small panel with the
+  labelled price-shock / liquidity-crunch / calm injects + reset. Secondary to the live feed.
+- **Companion:** a **live status chip** sits in the top bar next to the loop nav — `agent running`
+  during a cycle, else `agent live · next run …` (from the runner `/status`), or `demo mode` when no
+  runner is configured.
+- **Data:** scenario injection into the client-side demo source (cycles tagged `demo`, `live:false`).
 - **Reference:** none — deliberately styled *apart* from the real controls.
-- **States:** see §8 (honesty treatment). Must never look like a "real" control.
+- **States:** see §8 (honesty treatment). Must never look like a "real" control; collapsed by default.
 
 ---
 

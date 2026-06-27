@@ -11,7 +11,9 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "dev": "node --experimental-strip-types src/index.ts"
+    "dev": "node --experimental-strip-types src/index.ts",
+    "start": "node dist/runner/daemon.js",
+    "dev:runner": "node --experimental-strip-types src/runner/daemon.ts"
   },
   "dependencies": {
     "@casper-ecosystem/casper-eip-712": "^1.2.1",

@@ -2,8 +2,12 @@
 .env
 .env.local
 keys/
+secrets/
 *.pem
 *secret_key*
+
+# Runner runtime data (cycle journal, artifacts, depositor registry, cycle history)
+.sentinel-runner/
 
 # Node
 node_modules/

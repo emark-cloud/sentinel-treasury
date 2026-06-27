@@ -53,6 +53,8 @@ sentinel-treasury/
 │   ├── shared/        # TS types + JSON schemas + canonical-JSON blake2b hashing (the proof contract)
 │   ├── contracts/     # Rust/Odra: SentinelVault + AuditLog (both odra_cfg_is_upgradable = true)
 │   └── orchestrator/  # TS/Node: Scout/Risk/Treasury agents, data service, x402 client, execution service, rule engine
+│                      #   src/runner/ = the autonomous daemon (the live trigger): enumerates depositors,
+│                      #   runs the loop on a schedule, executes real rebalances, exposes cycles/receipts over HTTP+SSE
 ├── apps/
 │   └── dashboard/     # Next.js dark command-center (9 panels, see design.md)
 ├── spec.md            # architecture, data shapes, demo flow — authoritative
@@ -136,6 +138,17 @@ cargo odra test               # WASM-backend tests
 # orchestrator (packages/orchestrator)
 pnpm --filter orchestrator dev
 pnpm --filter orchestrator test
+pnpm --filter orchestrator build    # emits dist/ (the runner runs built JS → works on Node 20 + Railway)
+pnpm --filter orchestrator start    # autonomous runner daemon (runs dist/runner/daemon.js): live
+                                    # perceive→decide→act→prove per depositor on a schedule; HTTP/SSE on
+                                    # :PORT||:RUNNER_PORT (default 3002). Needs AGENT_SECRET_KEY_PATH + a build.
+pnpm --filter orchestrator dev:runner   # run the daemon from TS (Node 22+, --experimental-strip-types)
+
+# repo root — local one-command run (builds shared+orchestrator, then runs runner + dashboard):
+pnpm dev          # runner (:3002) + dashboard (:3100) together; Ctrl-C stops both
+pnpm runner       # just the runner (build + start)
+pnpm dashboard    # just the dashboard dev server
+# Deployment: dashboard → Vercel (apps/dashboard/vercel.json), runner → Railway (railway.json). See DEPLOY.md.
 
 # dashboard (apps/dashboard) — Next.js 15 / React 19, dark command-center (Phase 6)
 pnpm --filter @sentinel/dashboard dev         # dev server on http://localhost:3100
@@ -191,10 +204,30 @@ X402_FACILITATOR_URL=https://x402-facilitator.cspr.cloud
 CSPR_TRADE_MCP_ENDPOINT=
 PREMIUM_ENDPOINT_URL=        # we run both ends; + price
 
+# Autonomous runner daemon (packages/orchestrator/src/runner — `pnpm --filter orchestrator start`).
+# This is the production trigger: on a schedule it enumerates depositors and runs one capped
+# perceive→decide→act→prove cycle per account against their own ledger slice + policy, executing
+# real execute_rebalance txs and appending real receipts. Reconciles in-flight deploys on startup.
+AGENT_SECRET_KEY_PATH=       # host-local agent PEM (signs execute_rebalance) — REQUIRED to run the runner
+OWNER_SECRET_KEY_PATH=       # host-local owner PEM (signs pause(true) when the circuit breaker trips)
+RUNNER_INTERVAL_MS=1800000   # cadence between batches (default 30 min, matches the Styks heartbeat)
+RUNNER_PORT=3002             # HTTP/SSE surface: /status, /cycles, /cycles/stream, /receipts
+RUNNER_DATA_DIR=             # cycle journal + artifact store + depositor registry + cycle history (default ./.sentinel-runner)
+RUNNER_ACCOUNTS=             # optional comma-separated depositor seed (account hashes or public keys);
+                             # the runner also persists a registry + best-effort discovers from Deposited events
+# Policy envelope applied off-chain per account (the contract still enforces each account's clamp):
+# RUNNER_PER_ACTION_CAP_USD=50  RUNNER_DAILY_CAP_USD=200  RUNNER_MAX_SLIPPAGE_BPS=100
+# RUNNER_MIN_SCSPR_BPS=1500  RUNNER_MAX_SCSPR_BPS=7000  (deployed D-015 defaults)
+
 # Dashboard depositor flow (apps/dashboard). Live reads need the CSPR.cloud token (server-side only,
 # via the /api/vault + /api/position routes) + VAULT_ENTITY_HASH; absent these the dashboard runs the
 # depositor UX against an in-memory demo vault (tagged `demo`). The browser submits signed deposit/
 # redeem TransactionV1s to NEXT_PUBLIC_NODE_RPC_URL (public node, no token).
+# Live agent activity (the center column + receipt feed) comes from the runner: set RUNNER_API_URL so
+# the dashboard's /api/cycles, /api/cycles/stream, /api/receipts, /api/status routes proxy to the
+# daemon. Absent it, the dashboard falls back to the client-side demo source (demo scenarios are a
+# collapsed, optional trigger — no longer the only source of motion).
+RUNNER_API_URL=http://127.0.0.1:3002   # dashboard → runner HTTP/SSE base (server-side proxy target)
 VAULT_ENTITY_HASH=5031341875f4f89629abe7aa748bfa20b0c6ee9c15e9d9910b3047dea9eff7a0   # vault package hash (D-015) — CSPR.cloud keys the vault's holdings by this
 NEXT_PUBLIC_NODE_RPC_URL=https://node.testnet.casper.network/rpc
 DASHBOARD_TWAP_MICROS=30700              # display CSPR/USD (micro-USD); on-chain Styks read is authoritative

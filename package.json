@@ -14,7 +14,11 @@
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "runner:build": "pnpm --filter @sentinel/shared build && pnpm --filter orchestrator build",
+    "runner": "pnpm runner:build && pnpm --filter orchestrator start",
+    "dashboard": "pnpm --filter @sentinel/dashboard dev",
+    "dev": "pnpm runner:build && (trap 'kill 0' INT TERM; pnpm --filter orchestrator start & pnpm --filter @sentinel/dashboard dev)"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

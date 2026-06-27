@@ -40,6 +40,19 @@ interface ContractRecord {
   is_disabled: boolean;
 }
 
+/**
+ * Pull a depositor account hash out of a decoded CSPR.cloud event row, tolerant of shape: the
+ * `depositor` field may sit under `data`/`args`, be tagged `account-hash-…`, or be a bare 64-hex.
+ * Returns a lowercase 64-hex account hash, or null when no recognizable hash is present.
+ */
+function extractAccountHash(row: Record<string, unknown>): string | null {
+  const data = (row.data ?? row.args ?? row) as Record<string, unknown>;
+  const raw = data.depositor ?? data.account ?? row.depositor;
+  if (typeof raw !== 'string') return null;
+  const clean = raw.trim().toLowerCase().replace(/^0x/, '').replace(/^account-hash-/, '');
+  return /^[0-9a-f]{64}$/.test(clean) ? clean : null;
+}
+
 export class CsprCloudClient {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -100,6 +113,31 @@ export class CsprCloudClient {
     );
     const bal = rows?.[0]?.balance;
     return BigInt(bal ?? '0');
+  }
+
+  /**
+   * Discover the live depositor set from the vault's `Deposited` events (spec §4 multi-tenant
+   * model; `onchain.ts` notes events are used only to *find which accounts to manage* — balances
+   * come from the per-account contract views, never event replay).
+   *
+   * Best-effort, like the Styks reader was before D-012: the CSPR.cloud contract-events shape must
+   * be confirmed live, so any failure or unexpected shape yields `[]` and the runner falls back to
+   * its persisted registry + the env account seed. Returns distinct 64-hex account hashes.
+   */
+  async listDepositorAccountHashes(vaultPackageHash: string, limit = 250): Promise<string[]> {
+    try {
+      const rows = await this.getData<Record<string, unknown>[]>(
+        `/contract-packages/${vaultPackageHash}/events?event_name=Deposited&page=1&limit=${limit}`,
+      );
+      const out = new Set<string>();
+      for (const row of rows ?? []) {
+        const hash = extractAccountHash(row);
+        if (hash) out.add(hash);
+      }
+      return [...out];
+    } catch {
+      return [];
+    }
   }
 
   /**

@@ -1,10 +1,11 @@
-/** Persistent top bar — loop nav + scenario (demo) + Pause + Testnet tag (design.md §3, §5.2, §5.9). */
+/** Persistent top bar — loop nav + live status + Pause + collapsed demo menu + Testnet tag. */
 'use client';
+import { useState } from 'react';
 import { LOOP_STAGES, type LoopStage } from '../lib/types';
 import type { LoopApi } from '../lib/useLoop';
 import type { WalletApi } from '../lib/wallet';
 import { RegimePill } from './atoms';
-import { truncHash } from '../lib/format';
+import { truncHash, fmtAgo } from '../lib/format';
 
 function WalletChip({ wallet }: { wallet: WalletApi }) {
   if (!wallet.connected) {
@@ -82,9 +83,117 @@ function LoopNav({ stage }: { stage: LoopStage }) {
   );
 }
 
-export function TopBar({ loop, wallet }: { loop: LoopApi; wallet: WalletApi }) {
-  const { stage, running, paused, regime, inject, togglePause, reset } = loop;
+/** Relative "in 12m" formatter for the next scheduled run. */
+function fmtIn(ts: number, now = Date.now()): string {
+  const s = Math.max(0, Math.round((ts - now) / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.round(m / 60)}h`;
+}
+
+/**
+ * Live status chip — the agent's real operating state (design.md: the agent is the protagonist).
+ * Shows "running" while a cycle animates, otherwise the schedule (last/next run); falls back to a
+ * quiet "demo mode" tag when no runner backend is configured.
+ */
+function StatusChip({ loop }: { loop: LoopApi }) {
+  if (!loop.live) {
+    return (
+      <span className="pill tone-amber" style={{ fontSize: 10 }} title="No runner backend configured — running on the demo source">
+        demo mode
+      </span>
+    );
+  }
+  if (loop.running) {
+    return (
+      <span className="pill tone-info" style={{ fontSize: 10 }}>
+        <span className="dot pulse" />
+        agent running
+      </span>
+    );
+  }
+  const r = loop.runner;
+  const next = r?.nextRunAt ? `next run ${fmtIn(r.nextRunAt)}` : 'scheduled';
+  const last = r?.lastRunAt ? ` · last ${fmtAgo(r.lastRunAt)}` : '';
+  return (
+    <span
+      className="pill tone-green"
+      style={{ fontSize: 10 }}
+      title={r ? `Managing ${r.accountCount} account(s) every ${Math.round(r.intervalMs / 60000)}m` : 'Agent live'}
+    >
+      <span className="dot" />
+      agent live · {next}
+      {last}
+    </span>
+  );
+}
+
+/** Collapsed demo menu — the scenario trigger is now a secondary control, clearly tagged (§15.3). */
+function DemoMenu({ loop }: { loop: LoopApi }) {
+  const [open, setOpen] = useState(false);
+  const { running, paused, regime, inject, reset } = loop;
   const busy = running || paused;
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        className="btn"
+        onClick={() => setOpen((o) => !o)}
+        title="Demo scenario triggers — simulate a market event (everything downstream is real on Testnet)"
+        style={{
+          padding: '6px 10px',
+          border: '1px dashed var(--amber-line)',
+          color: 'var(--amber)',
+        }}
+      >
+        ⚡ Demo {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            right: 0,
+            zIndex: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            padding: 12,
+            minWidth: 230,
+            border: '1px dashed var(--amber-line)',
+            background: 'var(--surface-2)',
+            borderRadius: 'var(--r-ctl)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 500 }}>demo ▸ scenario</span>
+            <RegimePill regime={regime} />
+          </div>
+          <p style={{ fontSize: 10, color: 'var(--text-faint)', margin: 0, lineHeight: 1.4 }}>
+            Injects a simulated market event into the perception layer. The reasoning, the capped tx,
+            and the receipt are real on Testnet.
+          </p>
+          <button className="btn" disabled={busy} onClick={() => inject('shock')} style={{ justifyContent: 'flex-start' }}>
+            ⚡ Price shock
+          </button>
+          <button className="btn" disabled={busy} onClick={() => inject('crunch')} style={{ justifyContent: 'flex-start' }}>
+            ☷ Liquidity crunch
+          </button>
+          <button className="btn" disabled={busy} onClick={() => inject('calm')} style={{ justifyContent: 'flex-start' }}>
+            ☼ Calm returns
+          </button>
+          <button className="btn" onClick={reset} disabled={running} title="Reset the demo feed (re-loads live data when configured)">
+            ↻ Reset demo
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function TopBar({ loop, wallet }: { loop: LoopApi; wallet: WalletApi }) {
+  const { stage, paused, togglePause } = loop;
   return (
     <header
       style={{
@@ -111,38 +220,11 @@ export function TopBar({ loop, wallet }: { loop: LoopApi; wallet: WalletApi }) {
         </span>
         <span style={{ height: 20, width: 1, background: 'var(--border-strong)' }} />
         <LoopNav stage={stage} />
+        <StatusChip loop={loop} />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {/* Scenario controls — visibly tagged demo, styled apart (design.md §8, spec §15.3). */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '4px 8px 4px 10px',
-            border: '1px dashed var(--amber-line)',
-            background: 'var(--amber-dim)',
-            borderRadius: 'var(--r-ctl)',
-          }}
-          title="Simulated market event — only the trigger is injected; everything downstream is real on Testnet"
-        >
-          <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 500 }}>demo ▸ scenario</span>
-          <RegimePill regime={regime} />
-          <button className="btn" disabled={busy} onClick={() => inject('shock')} style={{ padding: '4px 9px' }}>
-            ⚡ Price shock
-          </button>
-          <button className="btn" disabled={busy} onClick={() => inject('crunch')} style={{ padding: '4px 9px' }}>
-            ☷ Liquidity crunch
-          </button>
-          <button className="btn" disabled={busy} onClick={() => inject('calm')} style={{ padding: '4px 9px' }}>
-            ☼ Calm returns
-          </button>
-        </div>
-
-        <button className="btn" onClick={reset} disabled={running} title="Reset the demo to a fresh resting book" style={{ padding: '6px 10px' }}>
-          ↻ Reset
-        </button>
+        <DemoMenu loop={loop} />
 
         <button
           className={paused ? 'btn btn-danger' : 'btn'}

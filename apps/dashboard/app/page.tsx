@@ -39,6 +39,14 @@ export default function Page() {
     ? (Number(depositor.vault.totalNavUsd) - Number(depositor.vault.managedNavUsd)) / 1e6
     : 0;
 
+  // Idle sub-line under the deliberation panel — reflects the real runner schedule when live, else
+  // points at the demo trigger (production framing: the agent runs autonomously, demo is optional).
+  const idleHint = loop.live
+    ? loop.runner?.nextRunAt
+      ? `Agent live — next autonomous cycle in ${Math.max(0, Math.round((loop.runner.nextRunAt - Date.now()) / 60000))}m`
+      : 'Agent live — waiting for the next scheduled cycle'
+    : 'Open the Demo menu to trigger a cycle (or configure a runner for live operation)';
+
   return (
     <div className="app-grid">
       <TopBar loop={loop} wallet={wallet} />
@@ -108,6 +116,7 @@ export default function Page() {
           cycle={loop.cycle}
           revealedTurns={loop.revealedTurns}
           consensus={loop.consensus}
+          idleHint={idleHint}
         />
         <DecisionCard cycle={loop.cycle} show={loop.consensus} />
         <ActionCard

@@ -163,10 +163,13 @@ export function DebatePanel({
   cycle,
   revealedTurns,
   consensus,
+  idleHint,
 }: {
   cycle: Cycle | null;
   revealedTurns: number;
   consensus: boolean;
+  /** Sub-line under "Agents idle" — reflects the live runner schedule (or the demo prompt). */
+  idleHint?: string;
 }) {
   return (
     <section className="card" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -217,7 +220,7 @@ export function DebatePanel({
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>Agents idle</div>
             <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>
-              Inject a scenario to start a deliberation
+              {idleHint ?? 'The agent runs on a schedule — the next cycle will stream here'}
             </div>
           </div>
         </div>

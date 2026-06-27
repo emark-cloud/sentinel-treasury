@@ -62,6 +62,11 @@ function ReceiptRow({ cycle, fresh }: { cycle: Cycle; fresh: boolean }) {
             #{num}
           </span>
           <ActionChip kind={r.actionKind} />
+          {cycle.live === false && (
+            <span className="pill tone-amber" style={{ fontSize: 9 }} title="Demo injection — no on-chain transaction">
+              demo
+            </span>
+          )}
         </div>
         <ResultBadge result={r.result} />
       </div>
@@ -149,6 +154,8 @@ function ReceiptRow({ cycle, fresh }: { cycle: Cycle; fresh: boolean }) {
 }
 
 export function ReceiptFeed({ history, freshId }: { history: Cycle[]; freshId: string | null }) {
+  const onChain = history.filter((c) => c.live !== false).length;
+  const demo = history.length - onChain;
   return (
     <section className="card" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <h3 className="card-title">
@@ -156,9 +163,16 @@ export function ReceiptFeed({ history, freshId }: { history: Cycle[]; freshId: s
           Receipts
           <span className="label">append-only audit log</span>
         </span>
-        <span className="pill tone-green" style={{ fontSize: 10 }}>
-          <span className="dot" />
-          {history.length} on-chain
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {demo > 0 && (
+            <span className="pill tone-amber" style={{ fontSize: 10 }}>
+              {demo} demo
+            </span>
+          )}
+          <span className="pill tone-green" style={{ fontSize: 10 }}>
+            <span className="dot" />
+            {onChain} on-chain
+          </span>
         </span>
       </h3>
       {history.length === 0 ? (

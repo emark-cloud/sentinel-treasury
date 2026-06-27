@@ -555,6 +555,17 @@ struct VaultBalances { cspr: U512, scspr: U256, csprusd: U256 }
 
 ## 15. Demo Flow
 
+> **Production posture (the default now).** The agent runs **autonomously** in production: the
+> `packages/orchestrator/src/runner` daemon (`pnpm --filter orchestrator start`) perceives live
+> market data and runs one capped perceive→decide→act→prove cycle **per depositor** on a schedule
+> (default 30 min), executing real `execute_rebalance` txs and appending real receipts, and exposes
+> the cycle/receipt feed over HTTP+SSE. The dashboard surfaces that **real activity** as the
+> highlight (center column + receipt feed stream from the runner via `RUNNER_API_URL`; the loop
+> header shows last/next run). The demo scenario injection below is now **one optional, collapsed
+> trigger** — useful to exercise the act→prove path on demand without waiting for a market move —
+> not the only source of motion. The walkthrough still applies; just read "trigger a scenario" as
+> the manual fast-path to what the runner does on its own.
+
 ### 15.1 The 3-second beat
 Price shock appears on screen → the three agents argue in the debate panel → **"CONSENSUS: de-risk to 20/80"** → a real Testnet `deploy_hash` pops up → a green **"Receipt #N ✔ on-chain"** badge with a verify link. *The agent just defended the treasury, by itself, with proof.*
 

@@ -12,5 +12,6 @@ export * from './position.js';
 export * from './types/provenance.js';
 export * from './types/market.js';
 export * from './types/decision.js';
+export * from './types/cycle.js';
 export * from './hash/canonical.js';
 export * from './schemas/index.js';
