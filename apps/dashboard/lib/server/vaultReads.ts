@@ -112,7 +112,15 @@ async function readBalances(cfg: ServerConfig): Promise<VaultBalances> {
 export async function readVaultSnapshot(): Promise<{ live: boolean; nav: NavSnapshot }> {
   const cfg = readConfig();
   if (!cfg) {
-    return { live: false, nav: { totalNavUsd: '0', balances: { cspr: '0', scspr: '0', csprusd: '0' } } };
+    return {
+      live: false,
+      nav: {
+        totalNavUsd: '0',
+        managedNavUsd: '0',
+        allocBps: { scspr: 0, csprusd: 0, cspr: 0 },
+        balances: { cspr: '0', scspr: '0', csprusd: '0' },
+      },
+    };
   }
   const balances = await readBalances(cfg);
   const nav = computeNavSnapshot({ balances, twapMicros: cfg.twapMicros, rate: cfg.rate });

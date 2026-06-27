@@ -100,20 +100,14 @@ export function TopBar({ loop, wallet }: { loop: LoopApi; wallet: WalletApi }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          <span style={{ color: 'var(--green)', fontSize: 15 }}>◆</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+          <span style={{ color: 'var(--green)', fontSize: 20 }}>◆</span>
           <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.05 }}>
-            <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '-0.01em' }}>Sentinel</span>
-            <span style={{ fontSize: 10, color: 'var(--text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <span style={{ fontWeight: 600, fontSize: 19, letterSpacing: '-0.01em' }}>Sentinel</span>
+            <span style={{ fontSize: 12, color: 'var(--text-faint)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
               Treasury
             </span>
           </span>
-        </span>
-        <span
-          className="hide-narrow"
-          style={{ fontSize: 11, color: 'var(--text-dim)', maxWidth: '30ch', lineHeight: 1.25 }}
-        >
-          Autonomous on-chain treasury — acts under hard limits, proves every move.
         </span>
         <span style={{ height: 20, width: 1, background: 'var(--border-strong)' }} />
         <LoopNav stage={stage} />

@@ -77,8 +77,11 @@ export function totalUsd(input: NavInputs): bigint {
 
 /** Assemble the whole-vault aggregate TVL snapshot from the vault's total holdings. */
 export function computeNavSnapshot(input: NavInputs): NavSnapshot {
+  const b = bucketUsd(input);
   return {
-    totalNavUsd: totalUsd(input).toString(),
+    totalNavUsd: (b.scspr + b.csprusd + b.cspr).toString(),
+    managedNavUsd: (b.scspr + b.csprusd).toString(),
+    allocBps: allocationBps(input),
     balances: input.balances,
   };
 }

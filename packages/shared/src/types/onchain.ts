@@ -53,6 +53,11 @@ export interface PolicyConfig {
  */
 export interface NavSnapshot {
   totalNavUsd: string;
+  /** Managed book in micro-USD = sCSPR + csprUSD legs; excludes the working CSPR buffer
+   * (the dashboard's "managed" figure — the two buckets the agent rebalances). */
+  managedNavUsd: string;
+  /** USD-normalized allocation of the whole-vault holdings (bps; the three buckets sum to 10000). */
+  allocBps: AllocationBps;
   balances: VaultBalances;
 }
 

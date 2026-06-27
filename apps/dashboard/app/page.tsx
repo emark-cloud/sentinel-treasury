@@ -25,6 +25,14 @@ export default function Page() {
   const [modal, setModal] = useState<'deposit' | 'withdraw' | null>(null);
   const x402Active = loop.stage === 'perceive';
 
+  // Allocation state — managed book value + the USD-normalized split: the real vault's holdings
+  // when a live backend + wallet are configured (depositor.live), else the demo scenario's figure.
+  // (Regime + target band stay agent-driven; those are policy/reasoning, not vault state.)
+  const managedUsd = depositor.live
+    ? Number(depositor.vault.managedNavUsd) / 1e6
+    : loop.managedUsd;
+  const alloc = depositor.live ? depositor.vault.allocBps : loop.alloc;
+
   return (
     <div className="app-grid">
       <TopBar loop={loop} wallet={wallet} />
@@ -32,11 +40,11 @@ export default function Page() {
       {/* Left rail — state & trust (quiet, slow-changing). */}
       <div className="app-rail" style={{ gridArea: 'left' }}>
         <AllocationPanel
-          alloc={loop.alloc}
+          alloc={alloc}
           targetBps={loop.targetBps}
           regime={loop.regime}
           twapUsd={loop.twapUsd}
-          managedUsd={loop.managedUsd}
+          managedUsd={managedUsd}
         />
         <GuardrailPanel daySpentUsd={loop.daySpentUsd} paused={loop.paused} />
         <X402Meter x402={loop.x402} active={x402Active} />

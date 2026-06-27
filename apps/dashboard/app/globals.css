@@ -96,7 +96,7 @@ body {
   display: grid;
   grid-template-areas: 'top top top' 'left center right';
   grid-template-columns: minmax(300px, 340px) minmax(0, 1fr) minmax(320px, 380px);
-  grid-template-rows: 52px minmax(0, 1fr);
+  grid-template-rows: 64px minmax(0, 1fr);
   height: 100vh;
   gap: 14px;
   padding: 0 14px 14px;
@@ -113,7 +113,7 @@ body {
   .app-grid {
     grid-template-areas: 'top' 'left' 'center' 'right';
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 52px auto auto auto;
+    grid-template-rows: 64px auto auto auto;
     height: auto;
     min-height: 100vh;
   }
