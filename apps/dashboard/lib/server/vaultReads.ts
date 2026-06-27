@@ -19,7 +19,7 @@ import {
   type UserPosition,
   type VaultBalances,
 } from '@sentinel/shared';
-import { readAccountLedger, readVaultNativeMotes } from './ledgerReader';
+import { readAccountLedger, readVaultNativeMotes, stateRootHash } from './ledgerReader';
 
 interface ServerConfig {
   baseUrl: string;
@@ -97,8 +97,12 @@ async function readBalances(cfg: ServerConfig): Promise<VaultBalances> {
   // which CSPR.cloud's `/accounts/{hash}` does not expose (it reports `null`). Read the purse from
   // the node instead. CEP-18 holdings, by contrast, are keyed by the vault's package hash (Odra's
   // `self_address()` is `Address::Contract(package)`), which the `ft-token-ownership` endpoint reads.
-  const native = resolveVaultContractHash(cfg)
-    .then((contractHash) => readVaultNativeMotes(cfg.nodeRpcUrl, contractHash))
+  //
+  // The contract-hash resolve (CSPR.cloud) and the state-root-hash fetch (node) are independent —
+  // kick both off in parallel so the native path isn't four serial ~3s round-trips. `srh` is then
+  // shared into the purse-balance read.
+  const native = Promise.all([resolveVaultContractHash(cfg), stateRootHash(cfg.nodeRpcUrl)])
+    .then(([contractHash, srh]) => readVaultNativeMotes(cfg.nodeRpcUrl, contractHash, srh))
     .catch(() => 0n);
   const cep18 = (pkg: string) =>
     getData<{ balance?: string }[]>(cfg, `/accounts/${cfg.vaultHash}/ft-token-ownership?contract_package_hash=${pkg}`)
@@ -108,8 +112,38 @@ async function readBalances(cfg: ServerConfig): Promise<VaultBalances> {
   return { cspr: cspr.toString(), scspr: scspr.toString(), csprusd: csprusd.toString() };
 }
 
+// The aggregate TVL changes only on a deposit/withdraw/rebalance, but each cold read costs several
+// serial ~3s round-trips to the public testnet RPC/CSPR.cloud endpoints (the per-call latency is
+// irreducible). So we cache the snapshot with **stale-while-revalidate** semantics:
+//   - fresh (< FRESH_MS): serve the cache, do nothing;
+//   - stale (< MAX_MS):   serve the cache *immediately*, refresh in the background;
+//   - empty/expired:      block on one upstream read (only the very first load ever waits).
+// Concurrent reads coalesce onto a single in-flight upstream fetch. Net effect: the dashboard
+// resolves instantly after the first load, with data at most ~FRESH_MS stale. Override via env.
+const FRESH_MS = Number(process.env.DASHBOARD_VAULT_TTL_MS ?? '10000');
+const MAX_MS = Number(process.env.DASHBOARD_VAULT_MAX_STALE_MS ?? '300000');
+type Snapshot = { live: boolean; nav: NavSnapshot };
+let snapshotCache: { at: number; value: Snapshot } | null = null;
+let snapshotInflight: Promise<Snapshot> | null = null;
+
+function refreshSnapshot(cfg: ServerConfig): Promise<Snapshot> {
+  if (snapshotInflight) return snapshotInflight; // coalesce concurrent refreshes
+  snapshotInflight = (async () => {
+    const balances = await readBalances(cfg);
+    const nav = computeNavSnapshot({ balances, twapMicros: cfg.twapMicros, rate: cfg.rate });
+    const value: Snapshot = { live: true, nav };
+    snapshotCache = { at: Date.now(), value };
+    return value;
+  })();
+  // Clear the in-flight handle whether it resolves or rejects (a failed refresh keeps stale cache).
+  snapshotInflight.catch(() => {}).finally(() => {
+    snapshotInflight = null;
+  });
+  return snapshotInflight;
+}
+
 /** Whole-vault aggregate TVL snapshot. `live:false` ⇒ env not configured, caller falls back to demo. */
-export async function readVaultSnapshot(): Promise<{ live: boolean; nav: NavSnapshot }> {
+export async function readVaultSnapshot(): Promise<Snapshot> {
   const cfg = readConfig();
   if (!cfg) {
     return {
@@ -122,9 +156,13 @@ export async function readVaultSnapshot(): Promise<{ live: boolean; nav: NavSnap
       },
     };
   }
-  const balances = await readBalances(cfg);
-  const nav = computeNavSnapshot({ balances, twapMicros: cfg.twapMicros, rate: cfg.rate });
-  return { live: true, nav };
+  const age = snapshotCache ? Date.now() - snapshotCache.at : Infinity;
+  if (snapshotCache && age < FRESH_MS) return snapshotCache.value;
+  if (snapshotCache && age < MAX_MS) {
+    void refreshSnapshot(cfg); // stale: serve now, revalidate in the background
+    return snapshotCache.value;
+  }
+  return refreshSnapshot(cfg); // cold (first load) or too stale: block on one read
 }
 
 /**

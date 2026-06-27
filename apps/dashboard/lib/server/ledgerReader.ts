@@ -88,7 +88,7 @@ async function rpcCall(rpcUrl: string, method: string, params: unknown): Promise
   return res.json();
 }
 
-async function stateRootHash(rpcUrl: string): Promise<string> {
+export async function stateRootHash(rpcUrl: string): Promise<string> {
   const res = (await rpcCall(rpcUrl, 'chain_get_state_root_hash', {})) as {
     result?: { state_root_hash?: string };
   };
@@ -154,26 +154,44 @@ interface ContractStoredValue {
   error?: { message?: string };
 }
 
+// The vault's main-purse URef is stable for the life of a contract version (named keys don't change
+// without a redeploy), so resolving it once via `query_global_state` and caching it lets warm reads
+// skip that ~3s round-trip and go straight to `query_balance`.
+let purseUrefCache: { contract: string; uref: string } | null = null;
+
+async function resolvePurseUref(rpcUrl: string, contractHash: string, srh: string): Promise<string | null> {
+  if (purseUrefCache?.contract === contractHash) return purseUrefCache.uref;
+  const contract = (await rpcCall(rpcUrl, 'query_global_state', {
+    state_identifier: { StateRootHash: srh },
+    key: `hash-${contractHash}`,
+    path: [],
+  })) as ContractStoredValue;
+  const uref = contract.result?.stored_value?.Contract?.named_keys?.find(
+    (k) => k.name === CONTRACT_MAIN_PURSE_KEY,
+  )?.key;
+  if (!uref) return null;
+  purseUrefCache = { contract: contractHash, uref };
+  return uref;
+}
+
 /**
  * The vault's aggregate native-CSPR balance (motes) held in its `__contract_main_purse`. Read from
  * the node, not CSPR.cloud: the vault is a legacy `Contract` (not an addressable account), so
  * CSPR.cloud's `/accounts/{hash}` reports a `null` balance for it. We resolve the purse URef from
- * the contract's named keys and query its balance. Returns 0n on any RPC/parse failure.
+ * the contract's named keys (cached) and query its balance. Pass a pre-fetched `srh` to share one
+ * state-root-hash round-trip with the caller's other reads. Returns 0n on any RPC/parse failure.
  */
-export async function readVaultNativeMotes(rpcUrl: string, contractHash: string): Promise<bigint> {
+export async function readVaultNativeMotes(
+  rpcUrl: string,
+  contractHash: string,
+  srh?: string,
+): Promise<bigint> {
   try {
-    const srh = await stateRootHash(rpcUrl);
-    const contract = (await rpcCall(rpcUrl, 'query_global_state', {
-      state_identifier: { StateRootHash: srh },
-      key: `hash-${contractHash}`,
-      path: [],
-    })) as ContractStoredValue;
-    const purseUref = contract.result?.stored_value?.Contract?.named_keys?.find(
-      (k) => k.name === CONTRACT_MAIN_PURSE_KEY,
-    )?.key;
+    const root = srh ?? (await stateRootHash(rpcUrl));
+    const purseUref = await resolvePurseUref(rpcUrl, contractHash, root);
     if (!purseUref) return 0n;
     const bal = (await rpcCall(rpcUrl, 'query_balance', {
-      state_identifier: { StateRootHash: srh },
+      state_identifier: { StateRootHash: root },
       purse_identifier: { purse_uref: purseUref },
     })) as { result?: { balance?: string } };
     return BigInt(bal.result?.balance ?? '0');

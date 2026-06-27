@@ -52,6 +52,11 @@ export interface DepositorApi {
    * anyone connects. False ⇒ backend not configured, the demo aggregate is shown instead.
    */
   vaultLive: boolean;
+  /**
+   * True until the first aggregate-TVL fetch settles (resolves or fails). Lets the UI hold a
+   * skeleton instead of flashing the demo seed book before the real (possibly $0) vault loads.
+   */
+  vaultLoading: boolean;
   /** Aggregate vault TVL (all accounts). */
   vault: NavSnapshot;
   /** The connected account's own ledger slice + valuation, or null when disconnected/empty. */
@@ -156,6 +161,7 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
   const [position, setPosition] = useState<UserPosition | null>(null);
   const [live, setLive] = useState(false);
   const [vaultLive, setVaultLive] = useState(false);
+  const [vaultLoading, setVaultLoading] = useState(true);
   const [tx, setTx] = useState<TxState>({ phase: 'idle', deployHash: null, error: null });
   const account = wallet.activeKey;
   const useLive = wallet.isReal; // real extension ⇒ attempt the live backend + on-chain tx
@@ -172,7 +178,8 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
       .catch(() => {
         setVaultLive(false);
         setVault(demo.current!.snapshot());
-      });
+      })
+      .finally(() => setVaultLoading(false));
 
     // The per-account position needs a real connected wallet + on-chain identity.
     if (useLive && account) {
@@ -279,6 +286,7 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
     () => ({
       live,
       vaultLive,
+      vaultLoading,
       vault,
       position,
       tx,
@@ -289,6 +297,6 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
       refresh,
       resetTx,
     }),
-    [live, vaultLive, vault, position, tx, previewDeposit, deposit, withdraw, redeem, refresh, resetTx],
+    [live, vaultLive, vaultLoading, vault, position, tx, previewDeposit, deposit, withdraw, redeem, refresh, resetTx],
   );
 }

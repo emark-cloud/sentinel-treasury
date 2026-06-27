@@ -52,6 +52,7 @@ export default function Page() {
           twapUsd={loop.twapUsd}
           managedUsd={managedUsd}
           nativeUsd={nativeUsd}
+          loading={depositor.vaultLoading}
         />
         <GuardrailPanel daySpentUsd={loop.daySpentUsd} paused={loop.paused} />
         <X402Meter x402={loop.x402} active={x402Active} />
