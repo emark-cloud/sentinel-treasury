@@ -9,14 +9,37 @@
  * here reads secret key material — signing keys stay on the execution host and are loaded by
  * the execution service (Phase 5), never by the perception layer.
  */
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config as dotenvConfig } from 'dotenv';
 
 let loaded = false;
 
+/**
+ * Walk up from this module toward the filesystem root, returning the first directory
+ * that holds a `pnpm-workspace.yaml` (the monorepo root). Returns undefined if none is
+ * found. This makes `.env` resolution independent of `process.cwd()` — the runner is
+ * launched via `pnpm --filter orchestrator start`, whose cwd is the package, not the
+ * repo root where `.env` lives.
+ */
+function findRepoRoot(): string | undefined {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (;;) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
 /** Load `.env` into `process.env` exactly once (idempotent). Safe to call from any entrypoint. */
 export function loadEnv(): void {
   if (loaded) return;
-  dotenvConfig();
+  // Prefer the monorepo-root `.env` (stable regardless of cwd); fall back to cwd default.
+  const root = findRepoRoot();
+  if (root) dotenvConfig({ path: join(root, '.env') });
+  else dotenvConfig();
   loaded = true;
 }
 
