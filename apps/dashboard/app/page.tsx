@@ -33,6 +33,11 @@ export default function Page() {
     ? Number(depositor.vault.managedNavUsd) / 1e6
     : loop.managedUsd;
   const alloc = depositor.vaultLive ? depositor.vault.allocBps : loop.alloc;
+  // Native CSPR USD (total − managed) — buffer + un-deployed deposits. The Allocation panel splits
+  // out the part above the working buffer as "pending", so a fresh deposit shows before rebalance.
+  const nativeUsd = depositor.vaultLive
+    ? (Number(depositor.vault.totalNavUsd) - Number(depositor.vault.managedNavUsd)) / 1e6
+    : 0;
 
   return (
     <div className="app-grid">
@@ -46,6 +51,7 @@ export default function Page() {
           regime={loop.regime}
           twapUsd={loop.twapUsd}
           managedUsd={managedUsd}
+          nativeUsd={nativeUsd}
         />
         <GuardrailPanel daySpentUsd={loop.daySpentUsd} paused={loop.paused} />
         <X402Meter x402={loop.x402} active={x402Active} />

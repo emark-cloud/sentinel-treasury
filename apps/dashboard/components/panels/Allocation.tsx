@@ -8,35 +8,39 @@ import { fmtBps, fmtPrice, fmtUsd } from '../../lib/format';
 const COLORS = {
   scspr: 'var(--green)',
   csprusd: 'var(--info)',
-  cspr: 'var(--text-faint)',
+  pending: 'var(--amber)',
 };
 
 const BUFFER_CSPR = 80; // fixed working buffer, excluded from alloc math
 
-function Donut({ alloc, managedUsd }: { alloc: AllocationBps; managedUsd: number }) {
-  const r = 52;
+interface Seg {
+  key: keyof typeof COLORS;
+  usd: number;
+}
+
+function Donut({ segs, managedUsd, pendingUsd }: { segs: Seg[]; managedUsd: number; pendingUsd: number }) {
+  const size = 156;
+  const mid = size / 2;
+  const r = 62;
+  const sw = 15;
   const c = 2 * Math.PI * r;
-  const segs: { key: keyof typeof COLORS; bps: number }[] = [
-    { key: 'scspr', bps: alloc.scspr },
-    { key: 'csprusd', bps: alloc.csprusd },
-    { key: 'cspr', bps: alloc.cspr },
-  ];
+  const basis = segs.reduce((s, x) => s + Math.max(0, x.usd), 0);
   let offset = 0;
   return (
-    <div style={{ position: 'relative', width: 132, height: 132, flex: '0 0 auto' }}>
-      <svg width="132" height="132" viewBox="0 0 132 132" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="66" cy="66" r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="14" />
+    <div style={{ position: 'relative', width: size, height: size, flex: '0 0 auto' }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={mid} cy={mid} r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={sw} />
         {segs.map((s) => {
-          const len = (s.bps / 10000) * c;
+          const len = basis > 0 ? (Math.max(0, s.usd) / basis) * c : 0;
           const el = (
             <circle
               key={s.key}
-              cx="66"
-              cy="66"
+              cx={mid}
+              cy={mid}
               r={r}
               fill="none"
               stroke={COLORS[s.key]}
-              strokeWidth="14"
+              strokeWidth={sw}
               strokeLinecap="butt"
               strokeDasharray={`${len} ${c - len}`}
               strokeDashoffset={-offset}
@@ -57,12 +61,17 @@ function Donut({ alloc, managedUsd }: { alloc: AllocationBps; managedUsd: number
           justifyContent: 'center',
         }}
       >
-        <span className="mono" style={{ fontSize: 22, fontWeight: 500, letterSpacing: '-0.02em' }}>
+        <span className="mono" style={{ fontSize: 26, fontWeight: 500, letterSpacing: '-0.02em' }}>
           {fmtUsd(managedUsd, { compact: true })}
         </span>
         <span className="label" style={{ marginTop: 1 }}>
           managed
         </span>
+        {pendingUsd > 0.005 && (
+          <span className="mono" style={{ marginTop: 3, fontSize: 10, color: 'var(--amber)' }}>
+            +{fmtUsd(pendingUsd, { compact: true })} pending
+          </span>
+        )}
       </div>
     </div>
   );
@@ -82,7 +91,7 @@ function LegendRow({
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
       <span style={{ width: 9, height: 9, borderRadius: 3, background: swatch, flex: '0 0 auto' }} />
-      <span style={{ flex: 1, fontSize: 12, color: 'var(--text-dim)' }}>{label}</span>
+      <span style={{ flex: 1, fontSize: 12, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{label}</span>
       <span className="mono" style={{ fontSize: 12, width: 50, textAlign: 'right' }}>
         {fmtBps(bps)}
       </span>
@@ -113,17 +122,42 @@ export function AllocationPanel({
   regime,
   twapUsd,
   managedUsd,
+  nativeUsd,
 }: {
   alloc: AllocationBps;
   targetBps: { scspr: number; csprusd: number };
   regime: Regime;
   twapUsd: number;
   managedUsd: number;
+  /** USD value of the vault's native CSPR holdings (buffer + un-deployed deposits). */
+  nativeUsd: number;
 }) {
+  // Managed book split (sCSPR grow / csprUSD protect), USD-weighted.
   const managedBps = alloc.scspr + alloc.csprusd || 1;
   const scsprUsd = (managedUsd * alloc.scspr) / managedBps;
   const csprusdUsd = (managedUsd * alloc.csprusd) / managedBps;
-  const inBand = alloc.scspr >= POLICY.minScsprBps && alloc.scspr <= POLICY.maxScsprBps;
+
+  // Native CSPR beyond the fixed working buffer is deposited capital awaiting deployment by the
+  // agent's next rebalance — surface it so a fresh deposit is visible before it's allocated.
+  const bufferUsd = BUFFER_CSPR * twapUsd;
+  const pendingUsd = Math.max(0, nativeUsd - bufferUsd);
+
+  // Donut + legend share one basis so the ring matches the percentages.
+  const basis = scsprUsd + csprusdUsd + pendingUsd || 1;
+  const segs: Seg[] = [
+    { key: 'scspr', usd: scsprUsd },
+    { key: 'csprusd', usd: csprusdUsd },
+    { key: 'pending', usd: pendingUsd },
+  ];
+  const toBps = (usd: number) => Math.round((Math.max(0, usd) / basis) * 10000);
+
+  // The sCSPR band applies to the *managed* book (sCSPR vs csprUSD); it's undefined while every
+  // dollar is still pending deployment.
+  const managedScsprBps = managedUsd > 0 ? Math.round((scsprUsd / managedUsd) * 10000) : null;
+  const inBand =
+    managedScsprBps !== null &&
+    managedScsprBps >= POLICY.minScsprBps &&
+    managedScsprBps <= POLICY.maxScsprBps;
 
   return (
     <section className="card">
@@ -135,24 +169,36 @@ export function AllocationPanel({
         <RegimePill regime={regime} />
       </h3>
 
-      <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-        <Donut alloc={alloc} managedUsd={managedUsd} />
-        <div style={{ flex: 1 }}>
-          <LegendRow swatch="var(--green)" label="sCSPR (grow)" bps={alloc.scspr} usd={scsprUsd} />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+        <Donut segs={segs} managedUsd={managedUsd} pendingUsd={pendingUsd} />
+        <div style={{ width: '100%' }}>
+          <LegendRow swatch="var(--green)" label="sCSPR (grow)" bps={toBps(scsprUsd)} usd={scsprUsd} />
           <LegendRow
             swatch="var(--info)"
             label="csprUSD (protect)"
-            bps={alloc.csprusd}
+            bps={toBps(csprusdUsd)}
             usd={csprusdUsd}
           />
-          <div style={{ marginTop: 6 }}>
-            <span
-              className={inBand ? 'pill tone-green' : 'pill tone-amber'}
-              style={{ fontSize: 10 }}
-            >
-              <span className="dot" />
-              {inBand ? 'Within band' : 'Out of band'}
-            </span>
+          {pendingUsd > 0.005 && (
+            <LegendRow
+              swatch="var(--amber)"
+              label="CSPR (pending)"
+              bps={toBps(pendingUsd)}
+              usd={pendingUsd}
+            />
+          )}
+          <div style={{ marginTop: 8 }}>
+            {managedScsprBps === null ? (
+              <span className="pill tone-amber" style={{ fontSize: 10 }}>
+                <span className="dot" />
+                Awaiting allocation
+              </span>
+            ) : (
+              <span className={inBand ? 'pill tone-green' : 'pill tone-amber'} style={{ fontSize: 10 }}>
+                <span className="dot" />
+                {inBand ? 'Within band' : 'Out of band'}
+              </span>
+            )}
           </div>
         </div>
       </div>
