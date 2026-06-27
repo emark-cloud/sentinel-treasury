@@ -26,12 +26,13 @@ export default function Page() {
   const x402Active = loop.stage === 'perceive';
 
   // Allocation state — managed book value + the USD-normalized split: the real vault's holdings
-  // when a live backend + wallet are configured (depositor.live), else the demo scenario's figure.
-  // (Regime + target band stay agent-driven; those are policy/reasoning, not vault state.)
-  const managedUsd = depositor.live
+  // when the backend is configured (depositor.vaultLive, account-independent — loads for any visitor),
+  // else the demo scenario's figure. (Regime + target band stay agent-driven; those are policy/
+  // reasoning, not vault state.)
+  const managedUsd = depositor.vaultLive
     ? Number(depositor.vault.managedNavUsd) / 1e6
     : loop.managedUsd;
-  const alloc = depositor.live ? depositor.vault.allocBps : loop.alloc;
+  const alloc = depositor.vaultLive ? depositor.vault.allocBps : loop.alloc;
 
   return (
     <div className="app-grid">

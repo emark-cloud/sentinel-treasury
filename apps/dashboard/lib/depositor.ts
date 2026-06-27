@@ -44,7 +44,14 @@ export interface TxState {
 }
 
 export interface DepositorApi {
+  /** The connected account's *position* is from the live backend (real wallet + configured env). */
   live: boolean;
+  /**
+   * The aggregate vault TVL is from the live backend. Account-independent: this loads on mount for
+   * any visitor (no wallet required), so the managed-book figure reflects the real vault even before
+   * anyone connects. False ⇒ backend not configured, the demo aggregate is shown instead.
+   */
+  vaultLive: boolean;
   /** Aggregate vault TVL (all accounts). */
   vault: NavSnapshot;
   /** The connected account's own ledger slice + valuation, or null when disconnected/empty. */
@@ -148,27 +155,39 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
   const [vault, setVault] = useState<NavSnapshot>(() => demo.current!.snapshot());
   const [position, setPosition] = useState<UserPosition | null>(null);
   const [live, setLive] = useState(false);
+  const [vaultLive, setVaultLive] = useState(false);
   const [tx, setTx] = useState<TxState>({ phase: 'idle', deployHash: null, error: null });
   const account = wallet.activeKey;
   const useLive = wallet.isReal; // real extension ⇒ attempt the live backend + on-chain tx
 
   const refresh = useCallback(() => {
+    // Aggregate vault TVL is account-independent — load it for any visitor, no wallet required, so the
+    // managed-book figure reflects the real vault even before anyone connects. (live:false / failure
+    // ⇒ backend not configured, fall back to the demo aggregate.)
+    void fetchVault()
+      .then((v: VaultApiResponse) => {
+        setVaultLive(v.live);
+        setVault(v.live ? v.nav : demo.current!.snapshot());
+      })
+      .catch(() => {
+        setVaultLive(false);
+        setVault(demo.current!.snapshot());
+      });
+
+    // The per-account position needs a real connected wallet + on-chain identity.
     if (useLive && account) {
-      void Promise.all([fetchVault(), fetchPosition(account)])
-        .then(([v, p]: [VaultApiResponse, { live: boolean; position: UserPosition | null }]) => {
-          setLive(v.live);
-          setVault(v.nav);
+      void fetchPosition(account)
+        .then((p: { live: boolean; position: UserPosition | null }) => {
+          setLive(p.live);
           setPosition(p.position);
         })
         .catch(() => {
           setLive(false);
-          setVault(demo.current!.snapshot());
           setPosition(account ? demo.current!.position(account) : null);
         });
       return;
     }
     setLive(false);
-    setVault(demo.current!.snapshot());
     setPosition(account ? demo.current!.position(account) : null);
   }, [useLive, account]);
 
@@ -259,6 +278,7 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
   return useMemo<DepositorApi>(
     () => ({
       live,
+      vaultLive,
       vault,
       position,
       tx,
@@ -269,6 +289,6 @@ export function useDepositor(wallet: WalletApi): DepositorApi {
       refresh,
       resetTx,
     }),
-    [live, vault, position, tx, previewDeposit, deposit, withdraw, redeem, refresh, resetTx],
+    [live, vaultLive, vault, position, tx, previewDeposit, deposit, withdraw, redeem, refresh, resetTx],
   );
 }
